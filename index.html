@@ -472,15 +472,33 @@
         links: { title: '🔗 リンク', component: <LinksWidget theme={theme} /> },
         calendar: { title: '📅 カレンダー', component: <CalendarWidget embedCode={data.settings.calendarEmbed} theme={theme} /> },
       };
+      
+      const isMobileView = window.innerWidth <= 768;
+      
       return (
-        <div style={{ padding: '24px', height: '100%', overflow: 'auto' }}>
+        <div style={{ padding: isMobileView ? '16px' : '24px', height: '100%', overflow: 'auto' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px', color: theme.text }}>🏠 ホーム</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '16px', gridAutoRows: '120px' }}>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: isMobileView ? '1fr' : 'repeat(12, 1fr)', 
+            gap: isMobileView ? '12px' : '16px', 
+            gridAutoRows: isMobileView ? 'auto' : '120px' 
+          }}>
             {data.widgetLayout.map(w => {
               const widget = widgets[w.id];
               if (!widget) return null;
               return (
-                <div key={w.id} style={{ gridColumn: `span ${w.w}`, gridRow: `span ${w.h}`, background: theme.bgSecondary, borderRadius: '12px', border: `1px solid ${theme.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div key={w.id} style={{ 
+                  gridColumn: isMobileView ? 'span 1' : `span ${w.w}`, 
+                  gridRow: isMobileView ? 'span 1' : `span ${w.h}`, 
+                  background: theme.bgSecondary, 
+                  borderRadius: '12px', 
+                  border: `1px solid ${theme.border}`, 
+                  overflow: 'hidden', 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  minHeight: isMobileView ? '150px' : 'auto'
+                }}>
                   <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: '12px', fontWeight: '500', color: theme.textSecondary, display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     <Icons.GripVertical />{widget.title}
                   </div>
@@ -728,75 +746,83 @@
       // 使用中のタグを収集
       const usedTags = [...new Set(data.daily.flatMap(m => m.tags))];
 
-      return (
-        <div style={{ display: 'flex', height: '100%' }}>
-          {/* リスト */}
-          <div style={{ width: '300px', borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', background: theme.bgSecondary }}>
-            <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontWeight: '600' }}>🗒️ 日常メモ</span>
-                <button onClick={addMemo} style={{ padding: '6px 12px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
-              </div>
-              {/* タグフィルター */}
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                <button onClick={() => setTagFilter('all')} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === 'all' ? theme.accent : theme.bgTertiary, color: tagFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>All</button>
-                {usedTags.map(tag => (
-                  <button key={tag} onClick={() => setTagFilter(tag)} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === tag ? theme.accent : theme.bgTertiary, color: tagFilter === tag ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{tag}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
-              {filteredMemos.map(memo => (
-                <div key={memo.id} onClick={() => setSelectedMemo(memo)} style={{ padding: '12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedMemo?.id === memo.id ? theme.highlight : 'transparent', border: `1px solid ${selectedMemo?.id === memo.id ? theme.accent : 'transparent'}` }}>
-                  {editingId === memo.id ? (
-                    <input type="text" value={memo.title} onChange={(e) => updateMemo(memo.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus style={{ width: '100%', background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '4px 8px', color: theme.text, fontSize: '13px', outline: 'none' }} />
-                  ) : (
-                    <div onDoubleClick={() => setEditingId(memo.id)} style={{ fontWeight: '500', fontSize: '13px', marginBottom: '4px' }}>{memo.title}</div>
-                  )}
-                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                    {memo.tags.map(tag => (
-                      <span key={tag} style={{ fontSize: '10px', padding: '2px 6px', background: theme.bgTertiary, borderRadius: '4px', color: theme.textSecondary }}>{tag}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {filteredMemos.length === 0 && <div style={{ textAlign: 'center', color: theme.textSecondary, padding: '40px 20px', fontSize: '13px' }}>{tagFilter === 'all' ? 'メモがありません' : `「${tagFilter}」タグのメモがありません`}<br/>「+ 追加」で作成してね</div>}
-            </div>
-          </div>
+      const isMobileView = window.innerWidth <= 768;
 
-          {/* エディタ */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: theme.bg }}>
-            {selectedMemo ? (
-              <>
-                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: '12px', background: theme.bgSecondary }}>
-                  {editingId === `title-${selectedMemo.id}` ? (
-                    <input type="text" value={selectedMemo.title} onChange={(e) => updateMemo(selectedMemo.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus style={{ flex: 1, fontWeight: '500', fontSize: '15px', background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '4px 8px', color: theme.text, outline: 'none' }} />
-                  ) : (
-                    <span onDoubleClick={() => setEditingId(`title-${selectedMemo.id}`)} style={{ fontWeight: '500', fontSize: '15px', cursor: 'text' }}>{selectedMemo.title}</span>
-                  )}
-                  <div style={{ flex: 1 }} />
-                  <button onClick={() => deleteMemo(selectedMemo.id)} style={{ padding: '6px 12px', background: theme.error, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>削除</button>
+      return (
+        <div style={{ display: 'flex', height: '100%', flexDirection: isMobileView ? 'column' : 'row' }}>
+          {/* リスト（モバイルで選択済みの場合は非表示） */}
+          {(!isMobileView || !selectedMemo) && (
+            <div style={{ width: isMobileView ? '100%' : '300px', borderRight: isMobileView ? 'none' : `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', background: theme.bgSecondary, flex: isMobileView ? 1 : 'none' }}>
+              <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontWeight: '600' }}>🗒️ 日常メモ</span>
+                  <button onClick={addMemo} style={{ padding: '6px 12px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
                 </div>
-                {/* タグ */}
-                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: theme.bgSecondary }}>
-                  <Icons.Tag />
-                  {selectedMemo.tags.map(tag => (
-                    <span key={tag} style={{ fontSize: '11px', padding: '4px 8px', background: theme.accent, color: '#fff', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {tag}
-                      <button onClick={() => removeTagFromMemo(selectedMemo.id, tag)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex' }}><Icons.X /></button>
-                    </span>
+                {/* タグフィルター */}
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                  <button onClick={() => setTagFilter('all')} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === 'all' ? theme.accent : theme.bgTertiary, color: tagFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>All</button>
+                  {usedTags.map(tag => (
+                    <button key={tag} onClick={() => setTagFilter(tag)} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === tag ? theme.accent : theme.bgTertiary, color: tagFilter === tag ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{tag}</button>
                   ))}
-                  <select value="" onChange={(e) => { if (e.target.value) addTagToMemo(selectedMemo.id, e.target.value); }} style={{ padding: '4px 8px', fontSize: '11px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, cursor: 'pointer' }}>
-                    <option value="">+ タグ追加</option>
-                    {(data.dailyTags || ['仕事', '買い物', 'アイデア', '日記']).filter(t => !selectedMemo.tags.includes(t)).map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
                 </div>
-                <textarea value={selectedMemo.content} onChange={(e) => updateMemo(selectedMemo.id, 'content', e.target.value)} placeholder="メモを入力..." style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
-              </>
-            ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary }}>メモを選択してね</div>
-            )}
-          </div>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
+                {filteredMemos.map(memo => (
+                  <div key={memo.id} onClick={() => setSelectedMemo(memo)} style={{ padding: '12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedMemo?.id === memo.id ? theme.highlight : 'transparent', border: `1px solid ${selectedMemo?.id === memo.id ? theme.accent : 'transparent'}` }}>
+                    {editingId === memo.id ? (
+                      <input type="text" value={memo.title} onChange={(e) => updateMemo(memo.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus style={{ width: '100%', background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '4px 8px', color: theme.text, fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                    ) : (
+                      <div onDoubleClick={() => setEditingId(memo.id)} style={{ fontWeight: '500', fontSize: '13px', marginBottom: '4px' }}>{memo.title}</div>
+                    )}
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      {memo.tags.map(tag => (
+                        <span key={tag} style={{ fontSize: '10px', padding: '2px 6px', background: theme.bgTertiary, borderRadius: '4px', color: theme.textSecondary }}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {filteredMemos.length === 0 && <div style={{ textAlign: 'center', color: theme.textSecondary, padding: '40px 20px', fontSize: '13px' }}>{tagFilter === 'all' ? 'メモがありません' : `「${tagFilter}」タグのメモがありません`}<br/>「+ 追加」で作成してね</div>}
+              </div>
+            </div>
+          )}
+
+          {/* エディタ（モバイルで未選択の場合は非表示） */}
+          {(!isMobileView || selectedMemo) && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: theme.bg }}>
+              {selectedMemo ? (
+                <>
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: '12px', background: theme.bgSecondary, flexWrap: 'wrap' }}>
+                    {isMobileView && (
+                      <button onClick={() => setSelectedMemo(null)} style={{ padding: '6px 10px', background: theme.bgTertiary, color: theme.text, border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>← 戻る</button>
+                    )}
+                    {editingId === `title-${selectedMemo.id}` ? (
+                      <input type="text" value={selectedMemo.title} onChange={(e) => updateMemo(selectedMemo.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus style={{ flex: 1, fontWeight: '500', fontSize: '15px', background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '4px 8px', color: theme.text, outline: 'none', minWidth: '100px', boxSizing: 'border-box' }} />
+                    ) : (
+                      <span onDoubleClick={() => setEditingId(`title-${selectedMemo.id}`)} style={{ fontWeight: '500', fontSize: '15px', cursor: 'text', flex: 1 }}>{selectedMemo.title}</span>
+                    )}
+                    <button onClick={() => deleteMemo(selectedMemo.id)} style={{ padding: '6px 12px', background: theme.error, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>削除</button>
+                  </div>
+                  {/* タグ */}
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: theme.bgSecondary }}>
+                    <Icons.Tag />
+                    {selectedMemo.tags.map(tag => (
+                      <span key={tag} style={{ fontSize: '11px', padding: '4px 8px', background: theme.accent, color: '#fff', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {tag}
+                        <button onClick={() => removeTagFromMemo(selectedMemo.id, tag)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex' }}><Icons.X /></button>
+                      </span>
+                    ))}
+                    <select value="" onChange={(e) => { if (e.target.value) addTagToMemo(selectedMemo.id, e.target.value); }} style={{ padding: '4px 8px', fontSize: '11px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, cursor: 'pointer' }}>
+                      <option value="">+ タグ追加</option>
+                      {(data.dailyTags || ['仕事', '買い物', 'アイデア', '日記']).filter(t => !selectedMemo.tags.includes(t)).map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <textarea value={selectedMemo.content} onChange={(e) => updateMemo(selectedMemo.id, 'content', e.target.value)} placeholder="メモを入力..." style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                </>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary }}>メモを選択してね</div>
+              )}
+            </div>
+          )}
         </div>
       );
     };
@@ -868,114 +894,122 @@
       // inputTagsがない場合の初期化
       const inputTags = data.inputTags || ['小説', '漫画', 'Audible', '映画', 'ドラマ', 'アニメ', 'YouTube'];
 
-      return (
-        <div style={{ display: 'flex', height: '100%' }} onClick={() => setShowTagSelector(false)}>
-          {/* リスト */}
-          <div style={{ width: '320px', borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', background: theme.bgSecondary }}>
-            <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontWeight: '600' }}>📖 Input</span>
-                <button onClick={addInput} style={{ padding: '6px 12px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
-              </div>
-              {/* ステータスフィルター */}
-              <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
-                {['all', 'reading', 'finished'].map(f => (
-                  <button key={f} onClick={() => setFilter(f)} style={{ flex: 1, padding: '6px', fontSize: '11px', background: filter === f ? theme.accent : theme.bgTertiary, color: filter === f ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                    {f === 'all' ? 'すべて' : f === 'reading' ? '進行中' : '完了'}
-                  </button>
-                ))}
-              </div>
-              {/* タグフィルター */}
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                <button onClick={() => setTagFilter('all')} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === 'all' ? theme.accent : theme.bgTertiary, color: tagFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>All</button>
-                {inputTags.map(tag => (
-                  <button key={tag} onClick={() => setTagFilter(tag)} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === tag ? theme.accent : theme.bgTertiary, color: tagFilter === tag ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{tag}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
-              {filteredInputs.map(input => (
-                <div key={input.id} onClick={() => setSelectedInput(input)} style={{ padding: '12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedInput?.id === input.id ? theme.highlight : 'transparent', border: `1px solid ${selectedInput?.id === input.id ? theme.accent : 'transparent'}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    {editingId === input.id ? (
-                      <input type="text" value={input.title} onChange={(e) => updateInput(input.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus onClick={(e) => e.stopPropagation()} style={{ flex: 1, background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '2px 6px', color: theme.text, fontSize: '13px', outline: 'none' }} />
-                    ) : (
-                      <span onDoubleClick={(e) => { e.stopPropagation(); setEditingId(input.id); }} style={{ flex: 1, fontWeight: '500', fontSize: '13px' }}>{input.title}</span>
-                    )}
-                    <span style={{ fontSize: '10px', padding: '2px 6px', background: input.status === 'finished' ? theme.success : theme.warning, color: '#fff', borderRadius: '4px' }}>
-                      {input.status === 'finished' ? '完了' : '進行中'}
-                    </span>
-                  </div>
-                  {/* タグ表示 */}
-                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                    {input.tags.map(tag => (
-                      <span key={tag} style={{ fontSize: '10px', padding: '2px 6px', background: theme.bgTertiary, borderRadius: '4px', color: theme.textSecondary }}>{tag}</span>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: '11px', color: theme.textSecondary }}>
-                    {input.startDate && `START: ${input.startDate}`}
-                    {input.finishDate && ` → FINISH: ${input.finishDate}`}
-                  </div>
-                </div>
-              ))}
-              {filteredInputs.length === 0 && <div style={{ textAlign: 'center', color: theme.textSecondary, padding: '40px 20px', fontSize: '13px' }}>記録がありません</div>}
-            </div>
-          </div>
+      const isMobileView = window.innerWidth <= 768;
 
-          {/* エディタ */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: theme.bg }}>
-            {selectedInput ? (
-              <>
-                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: '12px', background: theme.bgSecondary }}>
-                  {editingId === `title-${selectedInput.id}` ? (
-                    <input type="text" value={selectedInput.title} onChange={(e) => updateInput(selectedInput.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus style={{ flex: 1, fontWeight: '500', fontSize: '15px', background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '4px 8px', color: theme.text, outline: 'none' }} />
-                  ) : (
-                    <span onDoubleClick={() => setEditingId(`title-${selectedInput.id}`)} style={{ fontWeight: '500', fontSize: '15px', cursor: 'text' }}>{selectedInput.title}</span>
-                  )}
-                  <div style={{ flex: 1 }} />
-                  <select value={selectedInput.status} onChange={(e) => updateInput(selectedInput.id, 'status', e.target.value)} style={{ padding: '6px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '12px' }}>
-                    <option value="reading">進行中</option>
-                    <option value="finished">完了</option>
-                  </select>
-                  <button onClick={() => deleteInput(selectedInput.id)} style={{ padding: '6px 12px', background: theme.error, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>削除</button>
+      return (
+        <div style={{ display: 'flex', height: '100%', flexDirection: isMobileView ? 'column' : 'row' }} onClick={() => setShowTagSelector(false)}>
+          {/* リスト（モバイルで選択済みの場合は非表示） */}
+          {(!isMobileView || !selectedInput) && (
+            <div style={{ width: isMobileView ? '100%' : '320px', borderRight: isMobileView ? 'none' : `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', background: theme.bgSecondary, flex: isMobileView ? 1 : 'none' }}>
+              <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontWeight: '600' }}>📖 Input</span>
+                  <button onClick={addInput} style={{ padding: '6px 12px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
                 </div>
-                {/* タグ */}
-                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: theme.bgSecondary }}>
-                  <Icons.Tag />
-                  {selectedInput.tags.map(tag => (
-                    <span key={tag} style={{ fontSize: '11px', padding: '4px 8px', background: theme.accent, color: '#fff', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {tag}
-                      <button onClick={() => removeTagFromInput(selectedInput.id, tag)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex' }}><Icons.X /></button>
-                    </span>
+                {/* ステータスフィルター */}
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+                  {['all', 'reading', 'finished'].map(f => (
+                    <button key={f} onClick={() => setFilter(f)} style={{ flex: 1, padding: '6px', fontSize: '11px', background: filter === f ? theme.accent : theme.bgTertiary, color: filter === f ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                      {f === 'all' ? 'すべて' : f === 'reading' ? '進行中' : '完了'}
+                    </button>
                   ))}
-                  <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => setShowTagSelector(!showTagSelector)} style={{ fontSize: '11px', padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px dashed ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ タグ追加</button>
-                    {showTagSelector && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, background: theme.bgSecondary, border: `1px solid ${theme.border}`, borderRadius: '6px', padding: '8px', zIndex: 100, minWidth: '120px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
-                        {inputTags.filter(t => !selectedInput.tags.includes(t)).map(tag => (
-                          <div key={tag} onClick={() => { addTagToInput(selectedInput.id, tag); setShowTagSelector(false); }} style={{ padding: '4px 8px', fontSize: '11px', cursor: 'pointer', borderRadius: '4px', color: theme.text }} onMouseOver={(e) => e.target.style.background = theme.bgTertiary} onMouseOut={(e) => e.target.style.background = 'transparent'}>{tag}</div>
-                        ))}
-                      </div>
+                </div>
+                {/* タグフィルター */}
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                  <button onClick={() => setTagFilter('all')} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === 'all' ? theme.accent : theme.bgTertiary, color: tagFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>All</button>
+                  {inputTags.map(tag => (
+                    <button key={tag} onClick={() => setTagFilter(tag)} style={{ padding: '4px 8px', fontSize: '10px', background: tagFilter === tag ? theme.accent : theme.bgTertiary, color: tagFilter === tag ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{tag}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
+                {filteredInputs.map(input => (
+                  <div key={input.id} onClick={() => setSelectedInput(input)} style={{ padding: '12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedInput?.id === input.id ? theme.highlight : 'transparent', border: `1px solid ${selectedInput?.id === input.id ? theme.accent : 'transparent'}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      {editingId === input.id ? (
+                        <input type="text" value={input.title} onChange={(e) => updateInput(input.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus onClick={(e) => e.stopPropagation()} style={{ flex: 1, background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '2px 6px', color: theme.text, fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                      ) : (
+                        <span onDoubleClick={(e) => { e.stopPropagation(); setEditingId(input.id); }} style={{ flex: 1, fontWeight: '500', fontSize: '13px' }}>{input.title}</span>
+                      )}
+                      <span style={{ fontSize: '10px', padding: '2px 6px', background: input.status === 'finished' ? theme.success : theme.warning, color: '#fff', borderRadius: '4px' }}>
+                        {input.status === 'finished' ? '完了' : '進行中'}
+                      </span>
+                    </div>
+                    {/* タグ表示 */}
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                      {input.tags.map(tag => (
+                        <span key={tag} style={{ fontSize: '10px', padding: '2px 6px', background: theme.bgTertiary, borderRadius: '4px', color: theme.textSecondary }}>{tag}</span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '11px', color: theme.textSecondary }}>
+                      {input.startDate && `START: ${input.startDate}`}
+                      {input.finishDate && ` → FINISH: ${input.finishDate}`}
+                    </div>
+                  </div>
+                ))}
+                {filteredInputs.length === 0 && <div style={{ textAlign: 'center', color: theme.textSecondary, padding: '40px 20px', fontSize: '13px' }}>記録がありません</div>}
+              </div>
+            </div>
+          )}
+
+          {/* エディタ（モバイルで未選択の場合は非表示） */}
+          {(!isMobileView || selectedInput) && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: theme.bg }}>
+              {selectedInput ? (
+                <>
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: '12px', background: theme.bgSecondary, flexWrap: 'wrap' }}>
+                    {isMobileView && (
+                      <button onClick={() => setSelectedInput(null)} style={{ padding: '6px 10px', background: theme.bgTertiary, color: theme.text, border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>← 戻る</button>
                     )}
+                    {editingId === `title-${selectedInput.id}` ? (
+                      <input type="text" value={selectedInput.title} onChange={(e) => updateInput(selectedInput.id, 'title', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)} autoFocus style={{ flex: 1, fontWeight: '500', fontSize: '15px', background: theme.bg, border: `1px solid ${theme.accent}`, borderRadius: '4px', padding: '4px 8px', color: theme.text, outline: 'none', minWidth: '100px', boxSizing: 'border-box' }} />
+                    ) : (
+                      <span onDoubleClick={() => setEditingId(`title-${selectedInput.id}`)} style={{ fontWeight: '500', fontSize: '15px', cursor: 'text', flex: 1 }}>{selectedInput.title}</span>
+                    )}
+                    <select value={selectedInput.status} onChange={(e) => updateInput(selectedInput.id, 'status', e.target.value)} style={{ padding: '6px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '12px' }}>
+                      <option value="reading">進行中</option>
+                      <option value="finished">完了</option>
+                    </select>
+                    <button onClick={() => deleteInput(selectedInput.id)} style={{ padding: '6px 12px', background: theme.error, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>削除</button>
                   </div>
-                </div>
-                {/* 日付 */}
-                <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '24px', background: theme.bgSecondary }}>
-                  <div>
-                    <label style={{ fontSize: '11px', color: theme.textSecondary, display: 'block', marginBottom: '4px' }}>START</label>
-                    <input type="date" value={selectedInput.startDate} onChange={(e) => updateInput(selectedInput.id, 'startDate', e.target.value)} style={{ padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px' }} />
+                  {/* タグ */}
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: theme.bgSecondary }}>
+                    <Icons.Tag />
+                    {selectedInput.tags.map(tag => (
+                      <span key={tag} style={{ fontSize: '11px', padding: '4px 8px', background: theme.accent, color: '#fff', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {tag}
+                        <button onClick={() => removeTagFromInput(selectedInput.id, tag)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex' }}><Icons.X /></button>
+                      </span>
+                    ))}
+                    <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setShowTagSelector(!showTagSelector)} style={{ fontSize: '11px', padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px dashed ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ タグ追加</button>
+                      {showTagSelector && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, background: theme.bgSecondary, border: `1px solid ${theme.border}`, borderRadius: '6px', padding: '8px', zIndex: 100, minWidth: '120px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+                          {inputTags.filter(t => !selectedInput.tags.includes(t)).map(tag => (
+                            <div key={tag} onClick={() => { addTagToInput(selectedInput.id, tag); setShowTagSelector(false); }} style={{ padding: '4px 8px', fontSize: '11px', cursor: 'pointer', borderRadius: '4px', color: theme.text }} onMouseOver={(e) => e.target.style.background = theme.bgTertiary} onMouseOut={(e) => e.target.style.background = 'transparent'}>{tag}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: theme.textSecondary, display: 'block', marginBottom: '4px' }}>FINISH <span style={{ fontSize: '9px', color: theme.accent }}>（入力で自動的に完了）</span></label>
-                    <input type="date" value={selectedInput.finishDate} onChange={(e) => updateInput(selectedInput.id, 'finishDate', e.target.value)} style={{ padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px' }} />
+                  {/* 日付 */}
+                  <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: isMobileView ? '12px' : '24px', background: theme.bgSecondary, flexWrap: 'wrap' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', color: theme.textSecondary, display: 'block', marginBottom: '4px' }}>START</label>
+                      <input type="date" value={selectedInput.startDate} onChange={(e) => updateInput(selectedInput.id, 'startDate', e.target.value)} style={{ padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', color: theme.textSecondary, display: 'block', marginBottom: '4px' }}>FINISH <span style={{ fontSize: '9px', color: theme.accent }}>（入力で自動完了）</span></label>
+                      <input type="date" value={selectedInput.finishDate} onChange={(e) => updateInput(selectedInput.id, 'finishDate', e.target.value)} style={{ padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px' }} />
+                    </div>
                   </div>
-                </div>
-                <textarea value={selectedInput.content} onChange={(e) => updateInput(selectedInput.id, 'content', e.target.value)} placeholder="感想・メモを入力..." style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
-              </>
-            ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary }}>記録を選択してね</div>
-            )}
-          </div>
+                  <textarea value={selectedInput.content} onChange={(e) => updateInput(selectedInput.id, 'content', e.target.value)} placeholder="感想・メモを入力..." style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                </>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary }}>記録を選択してね</div>
+              )}
+            </div>
+          )}
         </div>
       );
     };
@@ -2072,27 +2106,29 @@
               <p style={{ fontSize: '11px', color: theme.textSecondary, marginBottom: '12px' }}>
                 {syncSettings.passwordHash ? '✅ パスワード設定済み（変更する場合は下に入力）' : '⚠️ パスワード未設定（同期を使うには設定が必要です）'}
               </p>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', flex: 1, minWidth: '140px' }}>
+                    <input 
+                      type={showPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="新しいパスワード"
+                      style={{ width: '100%', padding: '8px 36px 8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    <button onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '4px' }}>
+                      {showPassword ? <Icons.EyeOff /> : <Icons.Eye />}
+                    </button>
+                  </div>
                   <input 
                     type={showPassword ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="新しいパスワード"
-                    style={{ width: '100%', padding: '8px 36px 8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px', outline: 'none' }}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="確認用"
+                    style={{ flex: 1, minWidth: '100px', padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
                   />
-                  <button onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer' }}>
-                    {showPassword ? <Icons.EyeOff /> : <Icons.Eye />}
-                  </button>
+                  <button onClick={handlePasswordChange} style={{ padding: '8px 16px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' }}>設定</button>
                 </div>
-                <input 
-                  type={showPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="確認用"
-                  style={{ flex: 1, padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px', outline: 'none' }}
-                />
-                <button onClick={handlePasswordChange} style={{ padding: '8px 16px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>設定</button>
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: theme.textSecondary, cursor: 'pointer' }}>
                 <input 
@@ -2732,7 +2768,7 @@
         { id: 'input', icon: <Icons.Book />, label: 'Input' },
       ];
 
-      // パスワードロック画面
+      // パスワードロック画面（パスワード設定済みの場合）
       if (!isUnlocked && syncSettings.passwordHash) {
         return (
           <div style={{ display: 'flex', height: '100vh', background: theme.bg, color: theme.text, fontFamily: '"Noto Sans JP", sans-serif', alignItems: 'center', justifyContent: 'center' }}>
@@ -2779,6 +2815,22 @@
                 </button>
               </div>
               
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '16px', fontSize: '12px', color: theme.textSecondary, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox"
+                  checked={syncSettings.rememberPassword}
+                  onChange={(e) => {
+                    setSyncSettings(prev => ({ ...prev, rememberPassword: e.target.checked }));
+                    if (e.target.checked) {
+                      localStorage.setItem('noteAppRememberPw', 'true');
+                    } else {
+                      localStorage.removeItem('noteAppRememberPw');
+                    }
+                  }}
+                />
+                この端末ではパスワードを記憶する
+              </label>
+              
               {passwordError && (
                 <p style={{ fontSize: '12px', color: theme.error, marginBottom: '16px' }}>{passwordError}</p>
               )}
@@ -2802,6 +2854,36 @@
               
               <p style={{ fontSize: '11px', color: theme.textSecondary, marginTop: '24px' }}>
                 🛡️ データは暗号化されて保護されています
+              </p>
+            </div>
+          </div>
+        );
+      }
+      
+      // パスワード未設定 かつ localStorageにデータがない場合 → プライベート画面
+      const hasLocalData = localStorage.getItem('noteAppDataV2');
+      if (!syncSettings.passwordHash && !hasLocalData) {
+        // 秘密のショートカット: ロゴを5回タップで設定画面へ
+        const [tapCount, setTapCount] = React.useState(0);
+        const handleSecretTap = () => {
+          const newCount = tapCount + 1;
+          setTapCount(newCount);
+          if (newCount >= 5) {
+            setIsUnlocked(true);
+            setCurrentSection('settings');
+          }
+        };
+        
+        return (
+          <div style={{ display: 'flex', height: '100vh', background: theme.bg, color: theme.text, fontFamily: '"Noto Sans JP", sans-serif', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: theme.bgSecondary, borderRadius: '16px', padding: '40px', maxWidth: '400px', width: '90%', border: `1px solid ${theme.border}`, textAlign: 'center' }}>
+              <div 
+                onClick={handleSecretTap} 
+                style={{ fontSize: '48px', marginBottom: '16px', cursor: 'default', userSelect: 'none' }}
+              >🔒</div>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '8px' }}>プライベートアプリ</h2>
+              <p style={{ fontSize: '13px', color: theme.textSecondary }}>
+                このアプリは非公開です
               </p>
             </div>
           </div>
