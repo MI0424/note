@@ -2569,11 +2569,14 @@
           }
           
           const decrypted = await CryptoUtils.decrypt(gistData.encrypted, password);
-          setData(decrypted);
+          
+          // localStorageに保存
           localStorage.setItem('noteAppDataV2', JSON.stringify(decrypted));
           
-          setSyncStatus('loaded');
-          setTimeout(() => setSyncStatus(''), 3000);
+          // 成功メッセージ後にリロード
+          alert('読み込み完了！ページを更新します。');
+          window.location.reload();
+          
         } catch (e) {
           console.error('Gist load error:', e);
           setSyncStatus('error');
