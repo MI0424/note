@@ -2563,6 +2563,8 @@
           setSyncStatus('loading');
           const gistData = await GistAPI.loadFromGist(syncSettings.githubToken, syncSettings.gistId);
           
+          console.log('Gist data received:', gistData);
+          
           // パスワードハッシュの検証
           if (gistData.hash !== syncSettings.passwordHash) {
             throw new Error('パスワードが一致しません。別のパスワードで暗号化されています。');
@@ -2570,11 +2572,21 @@
           
           const decrypted = await CryptoUtils.decrypt(gistData.encrypted, password);
           
+          console.log('Decrypted data:', decrypted);
+          
+          // デバッグ: データの中身を確認
+          const projectCount = decrypted?.creative?.inProgress?.length || 0;
+          const memoCount = decrypted?.memos?.length || 0;
+          
           // localStorageに保存
           localStorage.setItem('noteAppDataV2', JSON.stringify(decrypted));
           
+          // 保存確認
+          const saved = localStorage.getItem('noteAppDataV2');
+          console.log('Saved to localStorage:', saved ? 'Yes' : 'No', 'Length:', saved?.length);
+          
           // 成功メッセージ後にリロード
-          alert('読み込み完了！ページを更新します。');
+          alert(`読み込み完了！\n作品数: ${projectCount}, メモ数: ${memoCount}\nページを更新します。`);
           window.location.reload();
           
         } catch (e) {
