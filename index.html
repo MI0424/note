@@ -2927,28 +2927,17 @@
       // パスワード未設定 かつ localStorageにデータがない かつ ロック状態 → プライベート画面
       const hasLocalData = localStorage.getItem('noteAppDataV2');
       
-      // デバッグ用：画面表示時の状態
-      console.log('=== 画面表示判定 ===');
-      console.log('isUnlocked:', isUnlocked);
-      console.log('syncSettings.passwordHash:', syncSettings.passwordHash ? '設定あり' : 'なし');
-      console.log('hasLocalData:', hasLocalData ? 'あり' : 'なし');
-      console.log('プライベート画面表示条件:', !isUnlocked && !syncSettings.passwordHash && !hasLocalData);
-      
       if (!isUnlocked && !syncSettings.passwordHash && !hasLocalData) {
         // 秘密のショートカット: ロゴを5回タップで設定画面へ
         const handleSecretTap = () => {
-          setSecretTapCount(prev => {
-            const newCount = prev + 1;
-            console.log('Secret tap:', newCount);
-            if (newCount >= 5) {
-              setTimeout(() => {
-                setIsUnlocked(true);
-                setCurrentSection('settings');
-              }, 100);
-              return 0;
-            }
-            return newCount;
-          });
+          const newCount = secretTapCount + 1;
+          alert('タップ: ' + newCount + '/5');
+          setSecretTapCount(newCount);
+          if (newCount >= 5) {
+            setIsUnlocked(true);
+            setCurrentSection('settings');
+            setSecretTapCount(0);
+          }
         };
         
         return (
@@ -2962,12 +2951,10 @@
               <p style={{ fontSize: '13px', color: theme.textSecondary }}>
                 このアプリは非公開です
               </p>
-              {secretTapCount > 0 && secretTapCount < 5 && (
-                <p style={{ fontSize: '12px', color: theme.accent, marginTop: '16px' }}>
-                  {secretTapCount}/5
-                </p>
-              )}
-              <p style={{ fontSize: '9px', color: theme.textSecondary, marginTop: '24px', opacity: 0.3 }}>v2.1</p>
+              <p style={{ fontSize: '12px', color: theme.accent, marginTop: '16px' }}>
+                タップ数: {secretTapCount}/5
+              </p>
+              <p style={{ fontSize: '9px', color: theme.textSecondary, marginTop: '24px', opacity: 0.3 }}>v2.2</p>
             </div>
           </div>
         );
