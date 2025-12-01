@@ -2442,17 +2442,27 @@
           const rememberPw = localStorage.getItem('noteAppRememberPw') === 'true';
           const hasData = localStorage.getItem('noteAppDataV2');
           
+          // デバッグ用
+          console.log('=== 起動時チェック ===');
+          console.log('savedHash:', savedHash ? '設定あり' : 'なし');
+          console.log('rememberPw:', rememberPw);
+          console.log('hasData:', hasData ? 'あり' : 'なし');
+          
           if (!savedHash && !hasData) {
             // 新規ユーザー（パスワード未設定、データなし）→ ロック状態を維持（5回タップ必要）
+            console.log('→ 新規ユーザー: ロック維持');
             setIsUnlocked(false);
           } else if (!savedHash) {
             // パスワード未設定だがデータあり → アンロック
+            console.log('→ パスワード未設定だがデータあり: アンロック');
             setIsUnlocked(true);
           } else if (rememberPw) {
             // パスワード記憶がON → アンロック
+            console.log('→ パスワード記憶ON: アンロック');
             setIsUnlocked(true);
           } else {
             // パスワード入力が必要
+            console.log('→ パスワード入力必要: ロック');
             setIsUnlocked(false);
           }
         };
@@ -2916,6 +2926,14 @@
       
       // パスワード未設定 かつ localStorageにデータがない かつ ロック状態 → プライベート画面
       const hasLocalData = localStorage.getItem('noteAppDataV2');
+      
+      // デバッグ用：画面表示時の状態
+      console.log('=== 画面表示判定 ===');
+      console.log('isUnlocked:', isUnlocked);
+      console.log('syncSettings.passwordHash:', syncSettings.passwordHash ? '設定あり' : 'なし');
+      console.log('hasLocalData:', hasLocalData ? 'あり' : 'なし');
+      console.log('プライベート画面表示条件:', !isUnlocked && !syncSettings.passwordHash && !hasLocalData);
+      
       if (!isUnlocked && !syncSettings.passwordHash && !hasLocalData) {
         // 秘密のショートカット: ロゴを5回タップで設定画面へ
         const handleSecretTap = () => {
@@ -2945,10 +2963,11 @@
                 このアプリは非公開です
               </p>
               {secretTapCount > 0 && secretTapCount < 5 && (
-                <p style={{ fontSize: '10px', color: theme.textSecondary, marginTop: '16px', opacity: 0.3 }}>
+                <p style={{ fontSize: '12px', color: theme.accent, marginTop: '16px' }}>
                   {secretTapCount}/5
                 </p>
               )}
+              <p style={{ fontSize: '9px', color: theme.textSecondary, marginTop: '24px', opacity: 0.3 }}>v2.1</p>
             </div>
           </div>
         );
