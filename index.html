@@ -2083,9 +2083,13 @@
         const hash = await CryptoUtils.hashPassword(newPassword);
         setSyncSettings(prev => ({ ...prev, passwordHash: hash, password: newPassword }));
         localStorage.setItem('noteAppPasswordHash', hash);
+        // rememberPasswordがONならパスワードも保存
+        if (syncSettings.rememberPassword) {
+          localStorage.setItem('noteAppSavedPw', newPassword);
+        }
         setNewPassword('');
         setConfirmPassword('');
-        alert('パスワードを設定しました！\n次回起動時から入力が必要になります。');
+        alert('パスワードを設定しました！');
       };
       
       return (
@@ -2138,12 +2142,17 @@
                     setSyncSettings(prev => ({ ...prev, rememberPassword: e.target.checked }));
                     if (e.target.checked) {
                       localStorage.setItem('noteAppRememberPw', 'true');
+                      // 現在のパスワードがあれば保存
+                      if (syncSettings.password) {
+                        localStorage.setItem('noteAppSavedPw', syncSettings.password);
+                      }
                     } else {
                       localStorage.removeItem('noteAppRememberPw');
+                      localStorage.removeItem('noteAppSavedPw');
                     }
                   }}
                 />
-                このブラウザでパスワードを記憶する（次回起動時に入力をスキップ）
+                このブラウザでパスワードを記憶する（次回起動時に入力をスキップ＆同期時も入力不要）
               </label>
             </div>
             
@@ -2406,6 +2415,7 @@
       const [passwordInput, setPasswordInput] = useState('');
       const [passwordError, setPasswordError] = useState('');
       const [showPasswordInput, setShowPasswordInput] = useState(false);
+      const [secretTapCount, setSecretTapCount] = useState(0); // 秘密の5回タップ用
       
       // 同期設定
       const [syncSettings, setSyncSettings] = useState(() => ({
@@ -2413,7 +2423,7 @@
         gistId: localStorage.getItem('noteAppGistId') || '',
         passwordHash: localStorage.getItem('noteAppPasswordHash') || '',
         rememberPassword: localStorage.getItem('noteAppRememberPw') === 'true',
-        password: '', // メモリ内のみ（localStorage には保存しない）
+        password: localStorage.getItem('noteAppRememberPw') === 'true' ? (localStorage.getItem('noteAppSavedPw') || '') : '', // 記憶ONなら保存されたパスワードを読み込み
       }));
       const [syncStatus, setSyncStatus] = useState(''); // '', 'saving', 'saved', 'loading', 'loaded', 'error'
       
@@ -2448,6 +2458,10 @@
           const inputHash = await CryptoUtils.hashPassword(passwordInput);
           if (inputHash === syncSettings.passwordHash) {
             setSyncSettings(prev => ({ ...prev, password: passwordInput }));
+            // rememberPasswordがONならパスワードも保存
+            if (syncSettings.rememberPassword) {
+              localStorage.setItem('noteAppSavedPw', passwordInput);
+            }
             setIsUnlocked(true);
             setPasswordError('');
             setPasswordInput('');
@@ -2492,7 +2506,7 @@
           return;
         }
         
-        // パスワードを取得（記憶されてる場合はプロンプト）
+        // パスワードを取得（記憶されてる場合はプロンプトなし）
         let password = syncSettings.password;
         if (!password) {
           password = prompt('暗号化パスワードを入力してください：');
@@ -2505,6 +2519,10 @@
             return;
           }
           setSyncSettings(prev => ({ ...prev, password }));
+          // rememberPasswordがONならパスワードも保存
+          if (syncSettings.rememberPassword) {
+            localStorage.setItem('noteAppSavedPw', password);
+          }
         }
         
         try {
@@ -2553,6 +2571,10 @@
             return;
           }
           setSyncSettings(prev => ({ ...prev, password }));
+          // rememberPasswordがONならパスワードも保存
+          if (syncSettings.rememberPassword) {
+            localStorage.setItem('noteAppSavedPw', password);
+          }
         }
         
         if (!confirm('クラウドのデータで上書きしますか？\n（現在のローカルデータは失われます）')) {
@@ -2574,9 +2596,13 @@
           
           console.log('Decrypted data:', decrypted);
           
-          // デバッグ: データの中身を確認
-          const projectCount = decrypted?.creative?.inProgress?.length || 0;
+          // デバッグ: データの中身を詳しく確認
+          const inProgressCount = decrypted?.creative?.inProgress?.length || 0;
+          const completedCount = decrypted?.creative?.completed?.length || 0;
+          const onHoldCount = decrypted?.creative?.onHold?.length || 0;
           const memoCount = decrypted?.memos?.length || 0;
+          const dailyMemoCount = decrypted?.dailyMemos?.length || 0;
+          const inputCount = decrypted?.input?.length || 0;
           
           // localStorageに保存
           localStorage.setItem('noteAppDataV2', JSON.stringify(decrypted));
@@ -2586,7 +2612,7 @@
           console.log('Saved to localStorage:', saved ? 'Yes' : 'No', 'Length:', saved?.length);
           
           // 成功メッセージ後にリロード
-          alert(`読み込み完了！\n作品数: ${projectCount}, メモ数: ${memoCount}\nページを更新します。`);
+          alert(`読み込み完了！\n\n進行中: ${inProgressCount}\n完了: ${completedCount}\n中断: ${onHoldCount}\n日常メモ: ${dailyMemoCount}\nInput: ${inputCount}\n\nページを更新します。`);
           window.location.reload();
           
         } catch (e) {
@@ -2840,6 +2866,7 @@
                       localStorage.setItem('noteAppRememberPw', 'true');
                     } else {
                       localStorage.removeItem('noteAppRememberPw');
+                      localStorage.removeItem('noteAppSavedPw');
                     }
                   }}
                 />
@@ -2879,13 +2906,13 @@
       const hasLocalData = localStorage.getItem('noteAppDataV2');
       if (!syncSettings.passwordHash && !hasLocalData) {
         // 秘密のショートカット: ロゴを5回タップで設定画面へ
-        const [tapCount, setTapCount] = React.useState(0);
         const handleSecretTap = () => {
-          const newCount = tapCount + 1;
-          setTapCount(newCount);
+          const newCount = secretTapCount + 1;
+          setSecretTapCount(newCount);
           if (newCount >= 5) {
             setIsUnlocked(true);
             setCurrentSection('settings');
+            setSecretTapCount(0);
           }
         };
         
