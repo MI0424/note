@@ -2442,27 +2442,17 @@
           const rememberPw = localStorage.getItem('noteAppRememberPw') === 'true';
           const hasData = localStorage.getItem('noteAppDataV2');
           
-          // デバッグ用
-          console.log('=== 起動時チェック ===');
-          console.log('savedHash:', savedHash ? '設定あり' : 'なし');
-          console.log('rememberPw:', rememberPw);
-          console.log('hasData:', hasData ? 'あり' : 'なし');
-          
           if (!savedHash && !hasData) {
             // 新規ユーザー（パスワード未設定、データなし）→ ロック状態を維持（5回タップ必要）
-            console.log('→ 新規ユーザー: ロック維持');
             setIsUnlocked(false);
           } else if (!savedHash) {
             // パスワード未設定だがデータあり → アンロック
-            console.log('→ パスワード未設定だがデータあり: アンロック');
             setIsUnlocked(true);
           } else if (rememberPw) {
             // パスワード記憶がON → アンロック
-            console.log('→ パスワード記憶ON: アンロック');
             setIsUnlocked(true);
           } else {
             // パスワード入力が必要
-            console.log('→ パスワード入力必要: ロック');
             setIsUnlocked(false);
           }
         };
@@ -2607,8 +2597,6 @@
           setSyncStatus('loading');
           const gistData = await GistAPI.loadFromGist(syncSettings.githubToken, syncSettings.gistId);
           
-          console.log('Gist data received:', gistData);
-          
           // パスワードハッシュの検証
           if (gistData.hash !== syncSettings.passwordHash) {
             throw new Error('パスワードが一致しません。別のパスワードで暗号化されています。');
@@ -2616,22 +2604,15 @@
           
           const decrypted = await CryptoUtils.decrypt(gistData.encrypted, password);
           
-          console.log('Decrypted data:', decrypted);
-          
-          // デバッグ: データの中身を詳しく確認
+          // データの中身を確認
           const inProgressCount = decrypted?.creative?.inProgress?.length || 0;
           const completedCount = decrypted?.creative?.completed?.length || 0;
           const onHoldCount = decrypted?.creative?.onHold?.length || 0;
-          const memoCount = decrypted?.memos?.length || 0;
           const dailyMemoCount = decrypted?.dailyMemos?.length || 0;
           const inputCount = decrypted?.input?.length || 0;
           
           // localStorageに保存
           localStorage.setItem('noteAppDataV2', JSON.stringify(decrypted));
-          
-          // 保存確認
-          const saved = localStorage.getItem('noteAppDataV2');
-          console.log('Saved to localStorage:', saved ? 'Yes' : 'No', 'Length:', saved?.length);
           
           // 成功メッセージ後にリロード
           alert(`読み込み完了！\n\n進行中: ${inProgressCount}\n完了: ${completedCount}\n中断: ${onHoldCount}\n日常メモ: ${dailyMemoCount}\nInput: ${inputCount}\n\nページを更新します。`);
@@ -2713,9 +2694,11 @@
       };
 
       useEffect(() => {
+        // アンロック状態の時だけ自動保存（プライベート画面では保存しない）
+        if (!isUnlocked) return;
         const timer = setTimeout(() => localStorage.setItem('noteAppDataV2', JSON.stringify(data)), 500);
         return () => clearTimeout(timer);
-      }, [data]);
+      }, [data, isUnlocked]);
 
       // サイドバーリサイズ
       const handleMouseDown = () => setIsResizing(true);
@@ -2931,7 +2914,6 @@
         // 秘密のショートカット: ロゴを5回タップで設定画面へ
         const handleSecretTap = () => {
           const newCount = secretTapCount + 1;
-          alert('タップ: ' + newCount + '/5');
           setSecretTapCount(newCount);
           if (newCount >= 5) {
             setIsUnlocked(true);
@@ -2951,10 +2933,6 @@
               <p style={{ fontSize: '13px', color: theme.textSecondary }}>
                 このアプリは非公開です
               </p>
-              <p style={{ fontSize: '12px', color: theme.accent, marginTop: '16px' }}>
-                タップ数: {secretTapCount}/5
-              </p>
-              <p style={{ fontSize: '9px', color: theme.textSecondary, marginTop: '24px', opacity: 0.3 }}>v2.2</p>
             </div>
           </div>
         );
