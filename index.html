@@ -2432,12 +2432,16 @@
         const checkPassword = async () => {
           const savedHash = localStorage.getItem('noteAppPasswordHash');
           const rememberPw = localStorage.getItem('noteAppRememberPw') === 'true';
+          const hasData = localStorage.getItem('noteAppDataV2');
           
-          if (!savedHash) {
-            // パスワード未設定 → そのままアンロック
+          if (!savedHash && !hasData) {
+            // 新規ユーザー（パスワード未設定、データなし）→ ロック状態を維持（5回タップ必要）
+            setIsUnlocked(false);
+          } else if (!savedHash) {
+            // パスワード未設定だがデータあり → アンロック
             setIsUnlocked(true);
           } else if (rememberPw) {
-            // パスワード記憶がON → 保存されたパスワードで自動解除（実際にはハッシュのみ保存）
+            // パスワード記憶がON → アンロック
             setIsUnlocked(true);
           } else {
             // パスワード入力が必要
@@ -2902,9 +2906,9 @@
         );
       }
       
-      // パスワード未設定 かつ localStorageにデータがない場合 → プライベート画面
+      // パスワード未設定 かつ localStorageにデータがない かつ ロック状態 → プライベート画面
       const hasLocalData = localStorage.getItem('noteAppDataV2');
-      if (!syncSettings.passwordHash && !hasLocalData) {
+      if (!isUnlocked && !syncSettings.passwordHash && !hasLocalData) {
         // 秘密のショートカット: ロゴを5回タップで設定画面へ
         const handleSecretTap = () => {
           const newCount = secretTapCount + 1;
