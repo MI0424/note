@@ -236,7 +236,7 @@
       inputTags: ['小説', '漫画', 'Audible', '映画', 'ドラマ', 'アニメ', 'YouTube'],
       progress: {},
       settings: { 
-        pomodoroWork: 25, 
+        pomodoroWork: 55, 
         pomodoroBreak: 5, 
         calendarEmbed: '',
         sidebarWidth: 280,
@@ -268,23 +268,32 @@
             audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
           }
           const ctx = audioContextRef.current;
-          const oscillator = ctx.createOscillator();
-          const gainNode = ctx.createGain();
-          oscillator.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          const sounds = {
-            workStart: { freq: 523.25, type: 'sine', duration: 0.3 },
-            workEnd: { freq: 783.99, type: 'triangle', duration: 0.5 },
-            breakStart: { freq: 392, type: 'sine', duration: 0.4 },
-            breakEnd: { freq: 659.25, type: 'square', duration: 0.2 },
+          
+          // 終了音：3回鳴らす
+          const playBeep = (freq, delay) => {
+            const oscillator = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            oscillator.frequency.value = freq;
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0.8, ctx.currentTime + delay);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + delay + 0.3);
+            oscillator.start(ctx.currentTime + delay);
+            oscillator.stop(ctx.currentTime + delay + 0.3);
           };
-          const sound = sounds[type];
-          oscillator.frequency.value = sound.freq;
-          oscillator.type = sound.type;
-          gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + sound.duration);
-          oscillator.start(ctx.currentTime);
-          oscillator.stop(ctx.currentTime + sound.duration);
+          
+          if (type === 'workEnd') {
+            // 作業終了：高い音3回
+            playBeep(880, 0);
+            playBeep(880, 0.4);
+            playBeep(1046.5, 0.8);
+          } else if (type === 'breakEnd') {
+            // 休憩終了：低めの音3回
+            playBeep(523.25, 0);
+            playBeep(523.25, 0.4);
+            playBeep(659.25, 0.8);
+          }
         } catch (e) { console.log('Audio not supported'); }
       }, []);
 
@@ -295,17 +304,16 @@
         } else if (timeLeft === 0 && isRunning) {
           if (mode === 'work') {
             playSound('workEnd');
-            setTimeout(() => { setMode('break'); setTimeLeft(customBreak * 60); playSound('breakStart'); }, 1000);
+            setTimeout(() => { setMode('break'); setTimeLeft(customBreak * 60); }, 1500);
           } else {
             playSound('breakEnd');
-            setTimeout(() => { setMode('work'); setTimeLeft(customWork * 60); playSound('workStart'); }, 1000);
+            setTimeout(() => { setMode('work'); setTimeLeft(customWork * 60); }, 1500);
           }
         }
         return () => clearInterval(interval);
       }, [isRunning, timeLeft, mode, customWork, customBreak, playSound]);
 
       const toggleTimer = () => {
-        if (!isRunning && timeLeft === customWork * 60 && mode === 'work') playSound('workStart');
         setIsRunning(!isRunning);
       };
 
@@ -2911,13 +2919,18 @@
       if (!isUnlocked && !syncSettings.passwordHash && !hasLocalData) {
         // 秘密のショートカット: ロゴを5回タップで設定画面へ
         const handleSecretTap = () => {
-          const newCount = secretTapCount + 1;
-          setSecretTapCount(newCount);
-          if (newCount >= 5) {
-            setIsUnlocked(true);
-            setCurrentSection('settings');
-            setSecretTapCount(0);
-          }
+          setSecretTapCount(prev => {
+            const newCount = prev + 1;
+            console.log('Secret tap:', newCount);
+            if (newCount >= 5) {
+              setTimeout(() => {
+                setIsUnlocked(true);
+                setCurrentSection('settings');
+              }, 100);
+              return 0;
+            }
+            return newCount;
+          });
         };
         
         return (
@@ -2925,12 +2938,17 @@
             <div style={{ background: theme.bgSecondary, borderRadius: '16px', padding: '40px', maxWidth: '400px', width: '90%', border: `1px solid ${theme.border}`, textAlign: 'center' }}>
               <div 
                 onClick={handleSecretTap} 
-                style={{ fontSize: '48px', marginBottom: '16px', cursor: 'default', userSelect: 'none' }}
+                style={{ fontSize: '48px', marginBottom: '16px', cursor: 'default', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
               >🔒</div>
               <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '8px' }}>プライベートアプリ</h2>
               <p style={{ fontSize: '13px', color: theme.textSecondary }}>
                 このアプリは非公開です
               </p>
+              {secretTapCount > 0 && secretTapCount < 5 && (
+                <p style={{ fontSize: '10px', color: theme.textSecondary, marginTop: '16px', opacity: 0.3 }}>
+                  {secretTapCount}/5
+                </p>
+              )}
             </div>
           </div>
         );
@@ -2999,10 +3017,27 @@
             {currentSection === 'creative' && (
               <div ref={paneContainerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                 {openPanes.length === 0 ? (
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary, textAlign: 'center', padding: '20px' }}>
-                    {isMobile ? '「作品一覧」から選択してね' : '左のリストからファイルを選択してね'}<br/>
-                    {!isMobile && <span style={{ fontSize: '12px', marginTop: '8px', opacity: 0.7 }}>複数選択すると画面分割で表示されるよ</span>}
-                  </div>
+                  isMobile ? (
+                    // モバイル：openPanesがなければ自動でサイドバー表示
+                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', background: theme.bgSecondary, overflow: 'hidden' }}>
+                      <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}`, fontWeight: '600', fontSize: '15px' }}>✏️ 創作</div>
+                      <CreativeSection 
+                        data={data} 
+                        setData={setData} 
+                        selectedItem={selectedItem} 
+                        setSelectedItem={(item) => { setSelectedItem(item); }} 
+                        openInNewPane={(item) => { openInNewPane(item); }} 
+                        theme={theme} 
+                        sidebarWidth={window.innerWidth} 
+                      />
+                    </div>
+                  ) : (
+                    // PC：メッセージ表示
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary, textAlign: 'center', padding: '20px' }}>
+                      左のリストからファイルを選択してね<br/>
+                      <span style={{ fontSize: '12px', marginTop: '8px', opacity: 0.7 }}>複数選択すると画面分割で表示されるよ</span>
+                    </div>
+                  )
                 ) : (
                   isMobile ? (
                     // モバイル：1ペインのみ表示（最後に選択したもの）
