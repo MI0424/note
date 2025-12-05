@@ -243,9 +243,8 @@
       },
       widgetLayout: [
         { id: 'weather', x: 0, y: 0, w: 2, h: 2 },
-        { id: 'timer', x: 2, y: 0, w: 2, h: 2 },
-        { id: 'todayProgress', x: 4, y: 0, w: 2, h: 2 },
-        { id: 'reminders', x: 6, y: 0, w: 6, h: 2 },
+        { id: 'todayProgress', x: 2, y: 0, w: 2, h: 2 },
+        { id: 'reminders', x: 4, y: 0, w: 8, h: 2 },
         { id: 'calendar', x: 0, y: 2, w: 6, h: 4 },
         { id: 'weeklyChart', x: 6, y: 2, w: 6, h: 2 },
         { id: 'links', x: 6, y: 4, w: 6, h: 2 },
@@ -343,6 +342,216 @@
               {isRunning ? <Icons.Pause /> : <Icons.Play />}{isRunning ? '一時停止' : 'スタート'}
             </button>
             <button onClick={resetTimer} style={{ padding: '8px 12px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Icons.RotateCcw /></button>
+          </div>
+        </div>
+      );
+    };
+
+    // ==================== フローティングポモドーロ ====================
+    const FloatingPomodoro = ({ theme, onClose }) => {
+      const [mode, setMode] = useState('work');
+      const [timeLeft, setTimeLeft] = useState(55 * 60);
+      const [isRunning, setIsRunning] = useState(false);
+      const [customWork, setCustomWork] = useState(55);
+      const [customBreak, setCustomBreak] = useState(5);
+      const [isMinimized, setIsMinimized] = useState(false);
+      const [showSettings, setShowSettings] = useState(false);
+      
+      // 音声設定
+      const [bgmEnabled, setBgmEnabled] = useState(true);
+      const [sfxEnabled, setSfxEnabled] = useState(true);
+      const [bgmVolume, setBgmVolume] = useState(0.3);
+      const [sfxVolume, setSfxVolume] = useState(0.7);
+      const [selectedBgm, setSelectedBgm] = useState('rain');
+      
+      // Audio refs
+      const bgmRef = useRef(null);
+      const sfxRef = useRef(null);
+      
+      // 利用可能なBGM（GitHubにアップロードするファイル名）
+      const bgmOptions = [
+        { id: 'rain', name: '🌧️ 雨' },
+        { id: 'cafe', name: '☕ カフェ' },
+        { id: 'fire', name: '🔥 焚き火' },
+        { id: 'none', name: '🔇 なし' },
+      ];
+      
+      // BGM再生/停止
+      useEffect(() => {
+        if (isRunning && bgmEnabled && selectedBgm !== 'none' && mode === 'work') {
+          if (!bgmRef.current) {
+            bgmRef.current = new Audio(`https://mi0424.github.io/note/sounds/${selectedBgm}.mp3`);
+            bgmRef.current.loop = true;
+          } else if (bgmRef.current.src !== `https://mi0424.github.io/note/sounds/${selectedBgm}.mp3`) {
+            bgmRef.current.pause();
+            bgmRef.current = new Audio(`https://mi0424.github.io/note/sounds/${selectedBgm}.mp3`);
+            bgmRef.current.loop = true;
+          }
+          bgmRef.current.volume = bgmVolume;
+          bgmRef.current.play().catch(() => {});
+        } else {
+          if (bgmRef.current) {
+            bgmRef.current.pause();
+          }
+        }
+        return () => {
+          if (bgmRef.current) bgmRef.current.pause();
+        };
+      }, [isRunning, bgmEnabled, selectedBgm, bgmVolume, mode]);
+      
+      // BGM音量変更
+      useEffect(() => {
+        if (bgmRef.current) {
+          bgmRef.current.volume = bgmVolume;
+        }
+      }, [bgmVolume]);
+      
+      // 効果音再生
+      const playSfx = useCallback((type) => {
+        if (!sfxEnabled) return;
+        try {
+          const sfx = new Audio(`https://mi0424.github.io/note/sounds/${type}.mp3`);
+          sfx.volume = sfxVolume;
+          sfx.play().catch(() => {});
+        } catch (e) {
+          console.log('SFX not available');
+        }
+      }, [sfxEnabled, sfxVolume]);
+      
+      // カウントダウン効果音（残り5秒から）
+      useEffect(() => {
+        if (isRunning && sfxEnabled && timeLeft <= 5 && timeLeft > 0) {
+          playSfx('countdown');
+        }
+      }, [timeLeft, isRunning, sfxEnabled, playSfx]);
+
+      useEffect(() => {
+        let interval;
+        if (isRunning && timeLeft > 0) {
+          interval = setInterval(() => setTimeLeft(t => t - 1), 1000);
+        } else if (timeLeft === 0 && isRunning) {
+          if (mode === 'work') {
+            playSfx('work-end');
+            setTimeout(() => { setMode('break'); setTimeLeft(customBreak * 60); }, 2000);
+          } else {
+            playSfx('break-end');
+            setTimeout(() => { setMode('work'); setTimeLeft(customWork * 60); }, 2000);
+          }
+        }
+        return () => clearInterval(interval);
+      }, [isRunning, timeLeft, mode, customWork, customBreak, playSfx]);
+
+      const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+      const progress = mode === 'work' ? (1 - timeLeft / (customWork * 60)) * 100 : (1 - timeLeft / (customBreak * 60)) * 100;
+
+      // 最小化時
+      if (isMinimized) {
+        return (
+          <div 
+            onClick={() => setIsMinimized(false)}
+            style={{ 
+              position: 'fixed', bottom: '80px', right: '20px', zIndex: 1001,
+              background: mode === 'work' ? theme.accent : theme.success, 
+              color: '#fff', borderRadius: '50%', width: '56px', height: '56px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              flexDirection: 'column', fontSize: '11px', fontWeight: '600'
+            }}
+          >
+            <span style={{ fontSize: '14px' }}>{isRunning ? '🔥' : '⏸️'}</span>
+            <span style={{ fontFamily: 'monospace' }}>{formatTime(timeLeft)}</span>
+          </div>
+        );
+      }
+
+      return (
+        <div style={{ 
+          position: 'fixed', bottom: '80px', right: '20px', zIndex: 1001,
+          background: theme.bgSecondary, borderRadius: '16px', padding: '16px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)', border: `1px solid ${theme.border}`,
+          width: showSettings ? '280px' : '200px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '12px', color: theme.textSecondary }}>{mode === 'work' ? '🔥 作業中' : '☕ 休憩'}</span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button onClick={() => setShowSettings(!showSettings)} style={{ background: showSettings ? theme.accent : 'none', border: 'none', color: showSettings ? '#fff' : theme.textSecondary, cursor: 'pointer', padding: '4px', borderRadius: '4px' }} title="音声設定">
+                🔊
+              </button>
+              <button onClick={() => setIsMinimized(true)} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '2px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '2px' }}><Icons.X /></button>
+            </div>
+          </div>
+          
+          {showSettings ? (
+            <div style={{ marginBottom: '12px', padding: '12px', background: theme.bgTertiary, borderRadius: '8px' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '11px', color: theme.textSecondary }}>🎵 BGM（作業中）</span>
+                  <button onClick={() => setBgmEnabled(!bgmEnabled)} style={{ padding: '2px 8px', fontSize: '10px', background: bgmEnabled ? theme.accent : theme.bgSecondary, color: bgmEnabled ? '#fff' : theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
+                    {bgmEnabled ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                <select value={selectedBgm} onChange={(e) => setSelectedBgm(e.target.value)} disabled={!bgmEnabled} style={{ width: '100%', padding: '6px', fontSize: '11px', background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, marginBottom: '6px' }}>
+                  {bgmOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '10px', color: theme.textSecondary }}>🔈</span>
+                  <input type="range" min="0" max="1" step="0.1" value={bgmVolume} onChange={(e) => setBgmVolume(Number(e.target.value))} disabled={!bgmEnabled} style={{ flex: 1 }} />
+                  <span style={{ fontSize: '10px', color: theme.textSecondary }}>🔊</span>
+                </div>
+              </div>
+              
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '11px', color: theme.textSecondary }}>🔔 効果音</span>
+                  <button onClick={() => setSfxEnabled(!sfxEnabled)} style={{ padding: '2px 8px', fontSize: '10px', background: sfxEnabled ? theme.accent : theme.bgSecondary, color: sfxEnabled ? '#fff' : theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
+                    {sfxEnabled ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '10px', color: theme.textSecondary }}>🔈</span>
+                  <input type="range" min="0" max="1" step="0.1" value={sfxVolume} onChange={(e) => setSfxVolume(Number(e.target.value))} disabled={!sfxEnabled} style={{ flex: 1 }} />
+                  <span style={{ fontSize: '10px', color: theme.textSecondary }}>🔊</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                <div style={{ fontSize: '32px', fontWeight: '600', fontFamily: 'monospace', color: mode === 'work' ? theme.accent : theme.success }}>
+                  {formatTime(timeLeft)}
+                </div>
+              </div>
+              
+              <div style={{ height: '4px', background: theme.bgTertiary, borderRadius: '2px', marginBottom: '12px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${progress}%`, background: mode === 'work' ? theme.accent : theme.success, transition: 'width 1s linear' }} />
+              </div>
+            </>
+          )}
+          
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+            <button onClick={() => setIsRunning(!isRunning)} style={{ padding: '8px 16px', background: isRunning ? theme.warning : theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+              {isRunning ? <Icons.Pause /> : <Icons.Play />}
+            </button>
+            <button onClick={() => { setIsRunning(false); setMode('work'); setTimeLeft(customWork * 60); if (bgmRef.current) bgmRef.current.pause(); }} style={{ padding: '8px 10px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '6px', cursor: 'pointer' }}>
+              <Icons.RotateCcw />
+            </button>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'center', marginTop: '12px' }}>
+            <input type="number" value={customWork} onChange={(e) => { setCustomWork(Number(e.target.value)); if (!isRunning && mode === 'work') setTimeLeft(Number(e.target.value) * 60); }} style={{ width: '36px', padding: '2px 4px', fontSize: '11px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, textAlign: 'center' }} />
+            <span style={{ fontSize: '11px', color: theme.textSecondary }}>/</span>
+            <input type="number" value={customBreak} onChange={(e) => { setCustomBreak(Number(e.target.value)); if (!isRunning && mode === 'break') setTimeLeft(Number(e.target.value) * 60); }} style={{ width: '36px', padding: '2px 4px', fontSize: '11px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, textAlign: 'center' }} />
+            <span style={{ fontSize: '11px', color: theme.textSecondary }}>分</span>
+          </div>
+          
+          {/* 現在の音声状態表示 */}
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '8px', fontSize: '10px', color: theme.textSecondary }}>
+            {bgmEnabled && selectedBgm !== 'none' && mode === 'work' && isRunning && <span>🎵 {bgmOptions.find(b => b.id === selectedBgm)?.name}</span>}
+            {sfxEnabled && <span>🔔</span>}
+            {!bgmEnabled && !sfxEnabled && <span>🔇 ミュート</span>}
           </div>
         </div>
       );
@@ -524,6 +733,23 @@
       const [collapsed, setCollapsed] = useState({});
       const [draggedId, setDraggedId] = useState(null);
       const [dragOverId, setDragOverId] = useState(null);
+      const [contentCollapsed, setContentCollapsed] = useState({}); // 内容部分の折りたたみ
+      const scrollContainerRef = useRef(null);
+      const scrollPositionRef = useRef(0);
+
+      // スクロール位置を保存
+      const saveScrollPosition = () => {
+        if (scrollContainerRef.current) {
+          scrollPositionRef.current = scrollContainerRef.current.scrollTop;
+        }
+      };
+
+      // スクロール位置を復元
+      useEffect(() => {
+        if (scrollContainerRef.current && scrollPositionRef.current > 0) {
+          scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+        }
+      });
 
       const autoResize = (textarea) => {
         if (textarea) {
@@ -578,6 +804,7 @@
       };
 
       const updateSection = (sectionId, field, value) => {
+        saveScrollPosition();
         const newSections = sections.map(s => s.id === sectionId ? { ...s, [field]: value } : s);
         rebuildContent(newSections);
       };
@@ -654,6 +881,18 @@
             <button onClick={() => addSection(2)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ 中項目</button>
             <button onClick={() => addSection(3)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ 小項目</button>
             <div style={{ flex: 1 }} />
+            <button onClick={() => {
+              // プロット全体をプレーンテキストでコピー
+              const plainText = sections.map(s => {
+                if (s.level === 0) return s.content;
+                const prefix = s.level === 1 ? '■ ' : s.level === 2 ? '　● ' : '　　・ ';
+                return prefix + s.title + (s.content.trim() ? '\n' + s.content : '');
+              }).join('\n\n');
+              navigator.clipboard.writeText(plainText);
+              alert('プロット全体をコピーしました！');
+            }} style={{ padding: '4px 10px', fontSize: '11px', background: theme.success, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+              📋 全体コピー
+            </button>
             <span style={{ fontSize: '10px', color: theme.textSecondary }}>⬍ ドラッグで並び替え</span>
             <button onClick={() => {
               const allIds = sections.filter(s => s.level > 0).map(s => s.id);
@@ -661,12 +900,21 @@
               const newCollapsed = {};
               allIds.forEach(id => { newCollapsed[id] = !allCollapsed; });
               setCollapsed(newCollapsed);
-            }} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
-              {Object.values(collapsed).filter(Boolean).length > 0 ? '📂 すべて開く' : '📁 すべて閉じる'}
+            }} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }} title="子項目も含めて全部折りたたみ">
+              {Object.values(collapsed).filter(Boolean).length > 0 ? '📂 全開く' : '📁 全閉じる'}
+            </button>
+            <button onClick={() => {
+              const allIds = sections.filter(s => s.level > 0).map(s => s.id);
+              const allContentCollapsed = allIds.every(id => contentCollapsed[id]);
+              const newContentCollapsed = {};
+              allIds.forEach(id => { newContentCollapsed[id] = !allContentCollapsed; });
+              setContentCollapsed(newContentCollapsed);
+            }} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }} title="内容だけ折りたたみ（子項目は残る）">
+              {Object.values(contentCollapsed).filter(Boolean).length > 0 ? '📝 内容開く' : '📄 内容閉じる'}
             </button>
           </div>
 
-          <div style={{ flex: 1, overflow: 'auto', padding: '12px', background: theme.bg }}>
+          <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '12px', background: theme.bg }}>
             {sections.map((s, idx) => {
               if (isHidden(idx)) return null;
               const indent = s.level > 0 ? (s.level - 1) * 24 : 0;
@@ -686,17 +934,20 @@
                 <div key={s.id} draggable onDragStart={(e) => handleDragStart(e, s.id)} onDragOver={(e) => handleDragOver(e, s.id)} onDragLeave={handleDragLeave} onDrop={(e) => handleDrop(e, s.id)} onDragEnd={handleDragEnd} style={{ marginLeft: indent, marginBottom: '6px', opacity: isDragging ? 0.5 : 1, transform: isDragOver ? 'translateY(4px)' : 'none', transition: 'transform 0.15s, opacity 0.15s' }}>
                   {isDragOver && <div style={{ height: '3px', background: theme.accent, borderRadius: '2px', marginBottom: '4px' }} />}
                   <div style={{ background: theme.bgSecondary, borderRadius: '8px', border: `1px solid ${isDragOver ? theme.accent : theme.border}`, borderLeft: s.level === 1 ? `4px solid ${theme.accent}` : s.level === 2 ? `4px solid ${theme.accentLight}` : `4px solid ${theme.border}`, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: isCollapsedItem ? theme.bgTertiary : 'transparent', borderBottom: isCollapsedItem ? 'none' : `1px solid ${theme.border}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: isCollapsedItem ? theme.bgTertiary : 'transparent', borderBottom: (isCollapsedItem || contentCollapsed[s.id]) ? 'none' : `1px solid ${theme.border}` }}>
                       <span style={{ cursor: 'grab', color: theme.textSecondary, display: 'flex', padding: '2px' }} title="ドラッグで移動"><Icons.GripVertical /></span>
-                      <span onClick={() => toggleCollapse(s.id)} style={{ color: theme.textSecondary, display: 'flex', transform: isCollapsedItem ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.2s', cursor: 'pointer', padding: '2px' }}><Icons.ChevronRight /></span>
+                      <span onClick={() => toggleCollapse(s.id)} style={{ color: theme.textSecondary, display: 'flex', transform: isCollapsedItem ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.2s', cursor: 'pointer', padding: '2px' }} title="子項目も含めて折りたたみ"><Icons.ChevronRight /></span>
                       <input type="text" value={s.title} onChange={(e) => updateSection(s.id, 'title', e.target.value)} placeholder="タイトルを入力..." style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: s.level === 1 ? '15px' : '14px', fontWeight: s.level === 1 ? '600' : '500', color: s.level === 1 ? theme.accent : theme.text, padding: '4px' }} />
-                      {isCollapsedItem && s.content.trim() && <span style={{ fontSize: '11px', color: theme.textSecondary, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.content.trim().substring(0, 25)}...</span>}
+                      {(isCollapsedItem || contentCollapsed[s.id]) && s.content.trim() && <span style={{ fontSize: '11px', color: theme.textSecondary, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.content.trim().substring(0, 25)}...</span>}
                       <div style={{ display: 'flex', gap: '2px' }}>
+                        <button onClick={() => setContentCollapsed(prev => ({ ...prev, [s.id]: !prev[s.id] }))} style={{ padding: '2px 6px', fontSize: '10px', background: contentCollapsed[s.id] ? theme.accent : theme.bgTertiary, color: contentCollapsed[s.id] ? '#fff' : theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }} title="内容だけ折りたたみ">
+                          {contentCollapsed[s.id] ? '📝' : '📄'}
+                        </button>
                         <button onClick={() => addSectionAfter(s.id, s.level)} style={{ padding: '2px 6px', fontSize: '10px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }} title="下に同レベルを追加">+</button>
                         <button onClick={() => deleteSection(s.id)} style={{ padding: '2px 6px', fontSize: '10px', background: 'transparent', color: theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer', opacity: 0.6 }} title="削除"><Icons.Trash /></button>
                       </div>
                     </div>
-                    {!isCollapsedItem && (
+                    {!isCollapsedItem && !contentCollapsed[s.id] && (
                       <textarea value={s.content} onChange={(e) => { updateSection(s.id, 'content', e.target.value); autoResize(e.target); }} ref={(el) => el && autoResize(el)} placeholder="内容を入力..." style={{ width: '100%', minHeight: '60px', padding: '12px', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: '14px', lineHeight: '1.8', resize: 'none', overflow: 'hidden', fontFamily: '"Noto Serif JP", serif' }} />
                     )}
                   </div>
@@ -1732,6 +1983,21 @@
       const [searchText, setSearchText] = useState('');
       const [replaceText, setReplaceText] = useState('');
       const textareaRef = useRef(null);
+      const scrollPosRef = useRef(0);
+
+      // スクロール位置を保持してonUpdate
+      const handleTextChange = (e) => {
+        if (textareaRef.current) {
+          scrollPosRef.current = textareaRef.current.scrollTop;
+        }
+        onUpdate(e.target.value);
+        // 次のレンダリング後にスクロール位置を復元
+        requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            textareaRef.current.scrollTop = scrollPosRef.current;
+          }
+        });
+      };
 
       const handleReplace = () => {
         if (!searchText || !textareaRef.current) return;
@@ -1810,7 +2076,7 @@
               <OutlineEditor content={pane.content || ''} onChange={onUpdate} theme={theme} />
             </div>
           ) : (
-            <textarea ref={textareaRef} value={pane.content || ''} onChange={(e) => onUpdate(e.target.value)} placeholder="ここに執筆..." style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+            <textarea ref={textareaRef} value={pane.content || ''} onChange={handleTextChange} placeholder="ここに執筆..." style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
           )}
         </div>
       );
@@ -2417,6 +2683,7 @@
       const [resizingPane, setResizingPane] = useState(null); // リサイズ中のペインインデックス
       const [sidebarWidth, setSidebarWidth] = useState(280);
       const [isResizing, setIsResizing] = useState(false);
+      const [showFloatingTimer, setShowFloatingTimer] = useState(false); // フローティングタイマー表示
       
       // パスワード保護関連
       const [isUnlocked, setIsUnlocked] = useState(false);
@@ -3077,7 +3344,33 @@
                 <Icons.Settings />
                 <span style={{ fontSize: '10px' }}>設定</span>
               </button>
+              <button onClick={() => setDarkMode(!darkMode)} style={{ flex: 1, height: '100%', border: 'none', background: 'transparent', color: theme.textSecondary, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                {darkMode ? <Icons.Sun /> : <Icons.Moon />}
+                <span style={{ fontSize: '10px' }}>{darkMode ? '☀️' : '🌙'}</span>
+              </button>
             </div>
+          )}
+
+          {/* フローティングポモドーロ（創作画面のみ） */}
+          {currentSection === 'creative' && (
+            <>
+              {showFloatingTimer ? (
+                <FloatingPomodoro theme={theme} onClose={() => setShowFloatingTimer(false)} />
+              ) : (
+                <button 
+                  onClick={() => setShowFloatingTimer(true)}
+                  style={{ 
+                    position: 'fixed', bottom: isMobile ? '80px' : '20px', right: '20px', zIndex: 1001,
+                    background: theme.accent, color: '#fff', border: 'none', borderRadius: '50%',
+                    width: '50px', height: '50px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
+                  }}
+                  title="ポモドーロタイマー"
+                >
+                  🍅
+                </button>
+              )}
+            </>
           )}
         </div>
       );
