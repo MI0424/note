@@ -129,13 +129,26 @@
         combined.set(salt, 0);
         combined.set(iv, salt.length);
         combined.set(new Uint8Array(encrypted), salt.length + iv.length);
-        return btoa(String.fromCharCode(...combined));
+        
+        // 大きなデータでもスタックオーバーフローしないようにチャンク処理
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < combined.length; i += chunkSize) {
+          const chunk = combined.subarray(i, Math.min(i + chunkSize, combined.length));
+          binary += String.fromCharCode.apply(null, chunk);
+        }
+        return btoa(binary);
       },
       
       // データを復号
       async decrypt(encryptedBase64, password) {
         try {
-          const combined = new Uint8Array(atob(encryptedBase64).split('').map(c => c.charCodeAt(0)));
+          // 大きなデータでも安全にデコード
+          const binaryStr = atob(encryptedBase64);
+          const combined = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            combined[i] = binaryStr.charCodeAt(i);
+          }
           const salt = combined.slice(0, 16);
           const iv = combined.slice(16, 28);
           const encrypted = combined.slice(28);
