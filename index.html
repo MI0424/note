@@ -3442,40 +3442,12 @@
         try {
           setSyncStatus('saving');
           
-          // データを安全にクリーンアップ
-          const cleanData = {};
-          const seen = new WeakSet();
+          // localStorageから直接JSONを取得（既にクリーンな文字列）
+          const jsonString = localStorage.getItem('noteAppDataV2');
+          if (!jsonString) {
+            throw new Error('保存するデータがありません');
+          }
           
-          const deepClone = (obj, path = '') => {
-            if (obj === null || typeof obj !== 'object') return obj;
-            if (typeof obj === 'function') return undefined;
-            if (obj instanceof Date) return obj.toISOString();
-            if (seen.has(obj)) {
-              console.warn('Circular reference detected at:', path);
-              return undefined;
-            }
-            seen.add(obj);
-            
-            if (Array.isArray(obj)) {
-              return obj.map((item, i) => deepClone(item, `${path}[${i}]`));
-            }
-            
-            const result = {};
-            for (const key of Object.keys(obj)) {
-              if (key.startsWith('_') || key === 'ref' || key === 'current' || key === '$$typeof') continue;
-              try {
-                result[key] = deepClone(obj[key], `${path}.${key}`);
-              } catch (e) {
-                console.warn('Error cloning:', path, key, e);
-              }
-            }
-            return result;
-          };
-          
-          const safeData = deepClone(data, 'root');
-          
-          // 先にJSON文字列化してからencryptに渡す
-          const jsonString = JSON.stringify(safeData);
           const encrypted = await CryptoUtils.encrypt(jsonString, password);
           const result = await GistAPI.saveToGist(
             syncSettings.githubToken,
@@ -3494,9 +3466,8 @@
           setTimeout(() => setSyncStatus(''), 3000);
         } catch (e) {
           console.error('Gist save error:', e);
-          console.error('Error stack:', e.stack);
           setSyncStatus('error');
-          alert('保存に失敗しました: ' + e.message + '\n\n詳細はブラウザのコンソール（F12）を確認してください');
+          alert('保存に失敗しました: ' + e.message);
           setTimeout(() => setSyncStatus(''), 3000);
         }
       };
