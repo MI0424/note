@@ -3437,7 +3437,17 @@
         
         try {
           setSyncStatus('saving');
-          const encrypted = await CryptoUtils.encrypt(data, password);
+          
+          // データをクリーンアップ（循環参照を除去）
+          const cleanData = JSON.parse(JSON.stringify(data, (key, value) => {
+            // React/DOMの内部プロパティを除外
+            if (key.startsWith('_') || key === 'ref' || key === 'current') return undefined;
+            // 関数は除外
+            if (typeof value === 'function') return undefined;
+            return value;
+          }));
+          
+          const encrypted = await CryptoUtils.encrypt(cleanData, password);
           const result = await GistAPI.saveToGist(
             syncSettings.githubToken,
             syncSettings.gistId,
