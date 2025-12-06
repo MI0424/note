@@ -2904,7 +2904,11 @@
                     placeholder="確認用"
                     style={{ flex: 1, minWidth: '100px', padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
                   />
-                  <button onClick={handlePasswordChange} style={{ padding: '8px 16px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' }}>設定</button>
+                  <button 
+                    onClick={handlePasswordChange} 
+                    onTouchEnd={(e) => { e.preventDefault(); handlePasswordChange(); }}
+                    style={{ padding: '8px 16px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+                  >設定</button>
                 </div>
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: theme.textSecondary, cursor: 'pointer' }}>
@@ -2941,6 +2945,9 @@
                       setSyncSettings(prev => ({ ...prev, githubToken: e.target.value }));
                       localStorage.setItem('noteAppGithubToken', e.target.value);
                     }}
+                    onBlur={(e) => {
+                      localStorage.setItem('noteAppGithubToken', e.target.value);
+                    }}
                     placeholder="ghp_xxxxxxxxxxxx"
                     style={{ width: '100%', padding: '8px 36px 8px 12px', background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
                   />
@@ -2964,9 +2971,28 @@
                   setSyncSettings(prev => ({ ...prev, gistId: e.target.value }));
                   localStorage.setItem('noteAppGistId', e.target.value);
                 }}
+                onBlur={(e) => {
+                  localStorage.setItem('noteAppGistId', e.target.value);
+                }}
                 placeholder="初回保存時に自動生成されます"
                 style={{ width: '100%', padding: '8px 12px', background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
               />
+            </div>
+            
+            {/* 設定状態の確認 */}
+            <div style={{ marginBottom: '16px', padding: '12px', background: theme.bg, borderRadius: '8px', fontSize: '11px' }}>
+              <div style={{ marginBottom: '4px', fontWeight: '600', color: theme.textSecondary }}>設定状態:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ color: syncSettings.githubToken ? theme.success : theme.error }}>
+                  {syncSettings.githubToken ? '✅' : '❌'} GitHubトークン
+                </span>
+                <span style={{ color: syncSettings.gistId ? theme.success : theme.warning }}>
+                  {syncSettings.gistId ? '✅' : '⚠️'} Gist ID {!syncSettings.gistId && '(初回保存で自動生成)'}
+                </span>
+                <span style={{ color: syncSettings.passwordHash ? theme.success : theme.error }}>
+                  {syncSettings.passwordHash ? '✅' : '❌'} 暗号化パスワード
+                </span>
+              </div>
             </div>
             
             {/* 同期ボタン */}
@@ -3342,8 +3368,14 @@
       
       // Gistから読み込み
       const handleLoadFromGist = async (passwordFromModal) => {
-        if (!syncSettings.githubToken || !syncSettings.gistId || !syncSettings.passwordHash) {
-          alert('GitHubトークン、Gist ID、パスワードを設定してください');
+        // どれが足りないかチェック
+        const missing = [];
+        if (!syncSettings.githubToken) missing.push('GitHubトークン');
+        if (!syncSettings.gistId) missing.push('Gist ID');
+        if (!syncSettings.passwordHash) missing.push('暗号化パスワード');
+        
+        if (missing.length > 0) {
+          alert(`以下の設定が必要です：\n\n${missing.join('\n')}\n\n設定画面で入力してください。`);
           return;
         }
         
