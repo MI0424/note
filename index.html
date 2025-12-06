@@ -1372,9 +1372,22 @@
               const sectionCount = p.items.filter(i => i.type === 'section').length;
               return {...p, items: [...p.items, { id: `section-${Date.now()}`, type: 'section', name: `${sectionCount + 1}章`, expanded: true }]};
             }
-            const count = p.items.filter(i => i.type === type).length;
-            const newItem = { id: `item-${Date.now()}`, type, name: type === 'chapter' ? `${count + 1}話` : `メモ${count > 0 ? count + 1 : ''}`, content: '' };
-            if (type === 'chapter') newItem.sectionId = sectionId;
+            // 話を追加する場合：章ごとにカウント
+            if (type === 'chapter') {
+              let count;
+              if (sectionId) {
+                // 章内の話数をカウント
+                count = p.items.filter(i => i.type === 'chapter' && i.sectionId === sectionId).length;
+              } else {
+                // 章に属さない話数をカウント
+                count = p.items.filter(i => i.type === 'chapter' && !i.sectionId).length;
+              }
+              const newItem = { id: `item-${Date.now()}`, type: 'chapter', name: `${count + 1}話`, content: '', sectionId };
+              return {...p, items: [...p.items, newItem]};
+            }
+            // メモの場合
+            const memoCount = p.items.filter(i => i.type === 'memo').length;
+            const newItem = { id: `item-${Date.now()}`, type, name: `メモ${memoCount > 0 ? memoCount + 1 : ''}`, content: '' };
             return {...p, items: [...p.items, newItem]};
           }
           return p;
@@ -1391,11 +1404,31 @@
         })}});
       };
 
-      // 話を章に移動
+      // 話を章に移動（移動後に話数を振り直し）
       const moveItemToSection = (projectId, itemId, newSectionId, status) => {
         setData({...data, creative: {...creative, [status]: creative[status].map(p => {
           if (p.id === projectId) {
-            return {...p, items: p.items.map(i => i.id === itemId ? {...i, sectionId: newSectionId} : i)};
+            // まず移動
+            let items = p.items.map(i => i.id === itemId ? {...i, sectionId: newSectionId} : i);
+            
+            // 話数の自動振り直し（章ごとに独立してカウント）
+            const renumberPattern = /^(\d+)話$/;
+            let noSectionNum = 1;
+            const sectionCounters = {};
+            items.filter(i => i.type === 'section').forEach(s => { sectionCounters[s.id] = 1; });
+            
+            items = items.map(item => {
+              if (item.type === 'chapter' && renumberPattern.test(item.name)) {
+                if (item.sectionId) {
+                  return { ...item, name: `${sectionCounters[item.sectionId]++}話` };
+                } else {
+                  return { ...item, name: `${noSectionNum++}話` };
+                }
+              }
+              return item;
+            });
+            
+            return {...p, items};
           }
           return p;
         })}});
@@ -1413,17 +1446,61 @@
             const insertIdx = position === 'before' ? targetIdx : targetIdx + 1;
             items.splice(draggedIdx < targetIdx ? insertIdx - 1 : insertIdx, 0, dragged);
             
-            // 話数の自動振り直し（「○話」パターンのみ対象）
+            // 話数の自動振り直し（章ごとに独立してカウント）
             const renumberPattern = /^(\d+)話$/;
-            let chapterNum = 1;
+            
+            // 章に属さない話を振り直し
+            let noSectionNum = 1;
+            // 各章ごとにカウンターを用意
+            const sectionCounters = {};
+            items.filter(i => i.type === 'section').forEach(s => { sectionCounters[s.id] = 1; });
+            
             const renumberedItems = items.map(item => {
               if (item.type === 'chapter' && renumberPattern.test(item.name)) {
-                return { ...item, name: `${chapterNum++}話` };
+                if (item.sectionId) {
+                  // 章に属する話
+                  return { ...item, name: `${sectionCounters[item.sectionId]++}話` };
+                } else {
+                  // 章に属さない話
+                  return { ...item, name: `${noSectionNum++}話` };
+                }
               }
               return item;
             });
             
             return {...p, items: renumberedItems};
+          }
+          return p;
+        })}});
+      };
+      
+      // 章同士の並べ替え
+      const reorderSections = (projectId, status, draggedSectionId, targetSectionId, position) => {
+        setData({...data, creative: {...creative, [status]: creative[status].map(p => {
+          if (p.id === projectId) {
+            const items = [...p.items];
+            const sections = items.filter(i => i.type === 'section');
+            const nonSections = items.filter(i => i.type !== 'section');
+            
+            const draggedIdx = sections.findIndex(s => s.id === draggedSectionId);
+            const targetIdx = sections.findIndex(s => s.id === targetSectionId);
+            if (draggedIdx === -1 || targetIdx === -1) return p;
+            
+            const [dragged] = sections.splice(draggedIdx, 1);
+            const insertIdx = position === 'before' ? targetIdx : targetIdx + 1;
+            sections.splice(draggedIdx < targetIdx ? insertIdx - 1 : insertIdx, 0, dragged);
+            
+            // 章番号の振り直し（「○章」パターンのみ）
+            const renumberPattern = /^(\d+)章$/;
+            const renumberedSections = sections.map((section, idx) => {
+              if (renumberPattern.test(section.name)) {
+                return { ...section, name: `${idx + 1}章` };
+              }
+              return section;
+            });
+            
+            // 非章アイテム + 章の順で結合
+            return {...p, items: [...nonSections, ...renumberedSections]};
           }
           return p;
         })}});
@@ -1792,7 +1869,7 @@
                       <div 
                         key={item.id} 
                         draggable
-                        onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
+                        onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('itemType', 'chapter'); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
                         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = `2px solid ${theme.accent}`; }}
                         onDragLeave={(e) => { e.currentTarget.style.borderTop = 'none'; }}
                         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = 'none'; const draggedId = e.dataTransfer.getData('itemId'); if (draggedId && draggedId !== item.id) reorderItems(p.id, status, draggedId, item.id, 'before'); }}
@@ -1814,7 +1891,7 @@
                     ))}
                     
                     {/* 章とその中の話 */}
-                    {p.items.filter(i => i.type === 'section').map(section => {
+                    {p.items.filter(i => i.type === 'section').map((section, sectionIdx) => {
                       const sectionChapters = p.items.filter(i => i.type === 'chapter' && i.sectionId === section.id);
                       const sectionCharCount = sectionChapters.reduce((sum, i) => sum + (i.content || '').replace(/[\s\n]/g, '').length, 0);
                       return (
@@ -1822,9 +1899,24 @@
                           {/* 章ヘッダー */}
                           <div 
                             draggable
-                            onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', section.id); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
-                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const draggedId = e.dataTransfer.getData('itemId'); const draggedItem = p.items.find(i => i.id === draggedId); if (draggedItem && draggedItem.type === 'chapter') moveItemToSection(p.id, draggedId, section.id, status); }}
+                            onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', section.id); e.dataTransfer.setData('itemType', 'section'); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = `2px solid ${theme.accent}`; }}
+                            onDragLeave={(e) => { e.currentTarget.style.borderTop = 'none'; }}
+                            onDrop={(e) => { 
+                              e.preventDefault(); 
+                              e.stopPropagation(); 
+                              e.currentTarget.style.borderTop = 'none';
+                              const draggedId = e.dataTransfer.getData('itemId'); 
+                              const draggedType = e.dataTransfer.getData('itemType');
+                              const draggedItem = p.items.find(i => i.id === draggedId); 
+                              if (draggedType === 'section' && draggedId !== section.id) {
+                                // 章同士の入れ替え
+                                reorderSections(p.id, status, draggedId, section.id, 'before');
+                              } else if (draggedItem && draggedItem.type === 'chapter') {
+                                // 話を章にドロップ
+                                moveItemToSection(p.id, draggedId, section.id, status);
+                              }
+                            }}
                             style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', margin: '0 6px', borderRadius: '4px', gap: '4px', fontSize: '11px', background: theme.bgTertiary, cursor: 'grab', borderLeft: `3px solid ${theme.accent}` }}
                           >
                             <Icons.GripVertical />
@@ -1849,7 +1941,7 @@
                                 <div 
                                   key={item.id} 
                                   draggable
-                                  onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
+                                  onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('itemType', 'chapter'); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
                                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = `2px solid ${theme.accent}`; }}
                                   onDragLeave={(e) => { e.currentTarget.style.borderTop = 'none'; }}
                                   onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = 'none'; const draggedId = e.dataTransfer.getData('itemId'); if (draggedId && draggedId !== item.id) reorderItems(p.id, status, draggedId, item.id, 'before'); }}
@@ -1878,6 +1970,11 @@
                         </div>
                       );
                     })}
+                    
+                    {/* 章の追加ボタン */}
+                    <div style={{ display: 'flex', gap: '4px', padding: '6px 10px', marginTop: '4px' }}>
+                      <button onClick={() => addItem(p.id, status, 'section')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accentLight, border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 章を追加</button>
+                    </div>
                     
                     {/* メモ */}
                     {p.items.filter(i => i.type === 'memo').length > 0 && (
@@ -2037,10 +2134,8 @@
                       );
                     })()}
                     
-                    {/* 追加ボタン */}
-                    <div style={{ display: 'flex', gap: '4px', padding: '6px 10px', flexWrap: 'wrap' }}>
-                      <button onClick={() => addItem(p.id, status, 'chapter')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accent, border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 話</button>
-                      <button onClick={() => addItem(p.id, status, 'section')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accentLight, border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 章</button>
+                    {/* メモ・付箋の追加ボタン */}
+                    <div style={{ display: 'flex', gap: '4px', padding: '4px 10px 6px', flexWrap: 'wrap' }}>
                       <button onClick={() => addItem(p.id, status, 'memo')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.textSecondary, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> メモ</button>
                       <button onClick={() => {
                         const colors = data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'];
