@@ -70,6 +70,7 @@
       X: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
       ChevronDown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>,
       ChevronRight: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>,
+      ChevronLeft: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>,
       Sun: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
       Moon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
       Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
@@ -227,6 +228,7 @@
         onHold: [], // 制作中断（作品単位）
         holdItems: [], // 保留（話単位）
         ideas: [], // ネタ保管庫
+        stickies: [], // 全体付箋
       },
       daily: [], // 日常メモ
       input: [], // Input（読書・映画など）
@@ -234,7 +236,9 @@
       tags: ['BL', 'ファンタジー', 'ホラー', 'ツイノベ', 'オメガバース'],
       dailyTags: ['仕事', '買い物', 'アイデア', '日記'],
       inputTags: ['小説', '漫画', 'Audible', '映画', 'ドラマ', 'アニメ', 'YouTube'],
+      stickyColors: ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'],
       progress: {},
+      progressAdjustments: {}, // 手動調整（コピペ分をマイナスなど）
       settings: { 
         pomodoroWork: 55, 
         pomodoroBreak: 5, 
@@ -582,32 +586,72 @@
     };
 
     // ==================== ウィジェット類 ====================
-    const TodayProgressWidget = ({ progress, theme }) => {
+    const TodayProgressWidget = ({ progress, progressAdjustments = {}, theme, onAdjust }) => {
+      const [showAdjust, setShowAdjust] = useState(false);
+      const [adjustValue, setAdjustValue] = useState('');
       // ローカル時間で日付を取得
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const todayProgress = progress[today] || 0;
+      const rawProgress = progress[today] || 0;
+      const adjustment = progressAdjustments[today] || 0;
+      const todayProgress = Math.max(0, rawProgress + adjustment);
       const goal = 2000;
+      
+      const handleAdjust = (value) => {
+        if (onAdjust && !isNaN(value)) {
+          onAdjust(today, (progressAdjustments[today] || 0) + value);
+        }
+        setAdjustValue('');
+        setShowAdjust(false);
+      };
+      
       return (
         <div style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', marginBottom: '12px' }}>
             <div style={{ fontSize: '28px', fontWeight: '600', color: theme.accent, whiteSpace: 'nowrap' }}>{todayProgress.toLocaleString()} 字</div>
             <div style={{ fontSize: '12px', color: theme.textSecondary, whiteSpace: 'nowrap' }}>目標: {goal.toLocaleString()} 字</div>
+            {adjustment !== 0 && (
+              <div style={{ fontSize: '10px', color: adjustment < 0 ? theme.error : theme.success, marginTop: '2px' }}>
+                ({adjustment > 0 ? '+' : ''}{adjustment.toLocaleString()} 調整)
+              </div>
+            )}
           </div>
-          <div style={{ height: '8px', background: theme.bgTertiary, borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ height: '8px', background: theme.bgTertiary, borderRadius: '4px', overflow: 'hidden', marginBottom: '8px' }}>
             <div style={{ height: '100%', width: `${Math.min((todayProgress / goal) * 100, 100)}%`, background: todayProgress >= goal ? theme.success : theme.accent, transition: 'width 0.3s' }} />
           </div>
+          {showAdjust ? (
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'center' }}>
+              <input 
+                type="number" 
+                value={adjustValue}
+                onChange={(e) => setAdjustValue(e.target.value)}
+                placeholder="-500"
+                style={{ width: '70px', padding: '4px 6px', fontSize: '11px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, textAlign: 'center' }}
+              />
+              <button onClick={() => handleAdjust(parseInt(adjustValue) || 0)} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>OK</button>
+              <button onClick={() => setShowAdjust(false)} style={{ padding: '4px 6px', fontSize: '10px', background: theme.bgTertiary, color: theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✕</button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setShowAdjust(true)}
+              style={{ alignSelf: 'center', padding: '2px 8px', fontSize: '9px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}
+            >
+              ± 調整
+            </button>
+          )}
         </div>
       );
     };
 
-    const WeeklyChartWidget = ({ progress, theme }) => {
+    const WeeklyChartWidget = ({ progress, progressAdjustments = {}, theme }) => {
       const days = [];
       for (let i = 6; i >= 0; i--) {
         const date = new Date(); date.setDate(date.getDate() - i);
         // ローカル時間で日付キーを生成
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        days.push({ label: ['日','月','火','水','木','金','土'][date.getDay()], value: progress[key] || 0, isToday: i === 0 });
+        const rawValue = progress[key] || 0;
+        const adjustment = progressAdjustments[key] || 0;
+        days.push({ label: ['日','月','火','水','木','金','土'][date.getDay()], value: Math.max(0, rawValue + adjustment), isToday: i === 0 });
       }
       const maxValue = Math.max(...days.map(d => d.value), 1000);
       const maxBarHeight = 80; // バーの最大高さ（ピクセル）
@@ -680,11 +724,21 @@
 
     // ==================== ホーム ====================
     const HomeScreen = ({ data, setData, theme }) => {
+      const handleProgressAdjust = (date, newAdjustment) => {
+        setData({
+          ...data,
+          progressAdjustments: {
+            ...data.progressAdjustments,
+            [date]: newAdjustment
+          }
+        });
+      };
+      
       const widgets = {
         weather: { title: '🌤️ 天気', component: <WeatherWidget theme={theme} /> },
         timer: { title: '⏱️ タイマー', component: <PomodoroTimer theme={theme} settings={data.settings} /> },
-        todayProgress: { title: '✏️ 今日の執筆', component: <TodayProgressWidget progress={data.progress} theme={theme} /> },
-        weeklyChart: { title: '📊 週間グラフ', component: <WeeklyChartWidget progress={data.progress} theme={theme} /> },
+        todayProgress: { title: '✏️ 今日の執筆', component: <TodayProgressWidget progress={data.progress} progressAdjustments={data.progressAdjustments} theme={theme} onAdjust={handleProgressAdjust} /> },
+        weeklyChart: { title: '📊 週間グラフ', component: <WeeklyChartWidget progress={data.progress} progressAdjustments={data.progressAdjustments} theme={theme} /> },
         reminders: { title: '📌 忘れちゃいけないこと', component: <RemindersWidget reminders={data.reminders} setReminders={(r) => setData({...data, reminders: r})} theme={theme} /> },
         links: { title: '🔗 リンク', component: <LinksWidget theme={theme} /> },
         calendar: { title: '📅 カレンダー', component: <CalendarWidget embedCode={data.settings.calendarEmbed} theme={theme} /> },
@@ -1282,11 +1336,15 @@
       const [dragOverStatus, setDragOverStatus] = useState(null);
       const [collapsedSections, setCollapsedSections] = useState(data.collapsedSections || { completed: true, onHold: true });
       const [showTagSelector, setShowTagSelector] = useState(null);
-      const [activeTab, setActiveTab] = useState('works'); // 'works' | 'ideas'
+      const [activeTab, setActiveTab] = useState('works'); // 'works' | 'ideas' | 'stickies'
       const [tagFilter, setTagFilter] = useState('all');
       const [editingIdeaId, setEditingIdeaId] = useState(null);
+      const [stickyColorFilter, setStickyColorFilter] = useState('all');
+      const [collapsedStickies, setCollapsedStickies] = useState({});
+      const [projectStickyFilter, setProjectStickyFilter] = useState({}); // 作品別付箋の色フィルター
 
       const ideas = creative.ideas || [];
+      const stickies = creative.stickies || [];
 
       const countChars = (project) => project.items.filter(i => i.type === 'chapter').reduce((sum, i) => sum + (i.content || '').replace(/[\s\n]/g, '').length, 0);
       const totalChars = () => [...creative.inProgress, ...creative.completed, ...creative.onHold].reduce((sum, p) => sum + countChars(p), 0);
@@ -1300,7 +1358,7 @@
       ])];
 
       const addProject = (status) => {
-        const newProject = { id: `project-${Date.now()}`, name: '新規作品', tags: [], expanded: true, targetCount: 0, collapsedSections: {}, items: [
+        const newProject = { id: `project-${Date.now()}`, name: '新規作品', tags: [], expanded: true, targetCount: 0, collapsedSections: {}, stickies: [], items: [
           { id: `item-${Date.now()}-1`, type: 'chapter', name: '1話', content: '', sectionId: null },
           { id: `item-${Date.now()}-2`, type: 'memo', name: 'プロット', content: '' },
         ]};
@@ -1840,11 +1898,158 @@
                       </div>
                     )}
                     
+                    {/* 作品別付箋 */}
+                    {(p.stickies || []).length > 0 && (() => {
+                      const projectStickies = p.stickies || [];
+                      const currentFilter = projectStickyFilter[p.id] || 'all';
+                      const filteredProjectStickies = currentFilter === 'all' ? projectStickies : projectStickies.filter(s => s.color === currentFilter);
+                      const stickyColors = data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'];
+                      const colorNames = { '#FFEB3B': '🟡', '#FF9800': '🟠', '#E91E63': '🩷', '#4CAF50': '🟢', '#2196F3': '🔵', '#9C27B0': '🟣' };
+                      
+                      return (
+                        <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: `1px dashed ${theme.border}`, marginRight: '6px' }}>
+                          <div style={{ fontSize: '9px', color: theme.textSecondary, marginBottom: '4px', marginLeft: '10px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span>📌 付箋 ({projectStickies.length})</span>
+                            <button 
+                              onClick={() => {
+                                const allCollapsed = filteredProjectStickies.every(s => s.collapsed);
+                                const updatedProjects = creative[status].map(proj => 
+                                  proj.id === p.id 
+                                    ? { ...proj, stickies: (proj.stickies || []).map(s => {
+                                        if (currentFilter === 'all' || s.color === currentFilter) {
+                                          return { ...s, collapsed: !allCollapsed };
+                                        }
+                                        return s;
+                                      })}
+                                    : proj
+                                );
+                                setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                              }}
+                              style={{ padding: '1px 4px', fontSize: '8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }}
+                            >
+                              {filteredProjectStickies.every(s => s.collapsed) ? '📂' : '📁'}
+                            </button>
+                          </div>
+                          {/* 色フィルター */}
+                          <div style={{ marginLeft: '10px', marginBottom: '4px', display: 'flex', gap: '3px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <button 
+                              onClick={() => setProjectStickyFilter(prev => ({ ...prev, [p.id]: 'all' }))}
+                              style={{ padding: '1px 5px', fontSize: '8px', background: currentFilter === 'all' ? theme.accent : theme.bgTertiary, color: currentFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                            >All</button>
+                            {stickyColors.map(color => {
+                              const count = projectStickies.filter(s => s.color === color).length;
+                              if (count === 0) return null;
+                              return (
+                                <button 
+                                  key={color}
+                                  onClick={() => setProjectStickyFilter(prev => ({ ...prev, [p.id]: color }))}
+                                  style={{ padding: '1px 5px', fontSize: '8px', background: currentFilter === color ? color : theme.bgTertiary, color: currentFilter === color ? '#333' : theme.textSecondary, border: currentFilter === color ? '1px solid #333' : 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                >
+                                  {colorNames[color]}({count})
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {filteredProjectStickies.map(sticky => (
+                            <div key={sticky.id} style={{ margin: '2px 6px', padding: sticky.collapsed ? '4px 8px' : '8px', borderRadius: '6px', background: sticky.color, position: 'relative' }}>
+                              {sticky.collapsed ? (
+                                <div 
+                                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                                  onClick={() => {
+                                    const updatedProjects = creative[status].map(proj => 
+                                      proj.id === p.id 
+                                        ? { ...proj, stickies: (proj.stickies || []).map(s => s.id === sticky.id ? { ...s, collapsed: false } : s) }
+                                        : proj
+                                    );
+                                    setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                                  }}
+                                >
+                                  <span style={{ color: '#333', fontSize: '10px' }}>▶</span>
+                                  <span style={{ flex: 1, fontSize: '10px', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {sticky.content ? sticky.content.substring(0, 20) + (sticky.content.length > 20 ? '...' : '') : '(空)'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <>
+                                  <div 
+                                    style={{ fontSize: '9px', color: '#333', marginBottom: '4px', cursor: 'pointer', opacity: 0.7 }}
+                                    onClick={() => {
+                                      const updatedProjects = creative[status].map(proj => 
+                                        proj.id === p.id 
+                                          ? { ...proj, stickies: (proj.stickies || []).map(s => s.id === sticky.id ? { ...s, collapsed: true } : s) }
+                                          : proj
+                                      );
+                                      setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                                    }}
+                                  >▼</div>
+                                  <textarea 
+                                    value={sticky.content}
+                                    onChange={(e) => {
+                                      const updatedProjects = creative[status].map(proj => 
+                                        proj.id === p.id 
+                                          ? { ...proj, stickies: (proj.stickies || []).map(s => s.id === sticky.id ? { ...s, content: e.target.value } : s) }
+                                          : proj
+                                      );
+                                      setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                                    }}
+                                    placeholder="メモ..."
+                                    style={{ width: '100%', minHeight: '40px', background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '4px', padding: '6px', fontSize: '11px', lineHeight: '1.5', color: '#333', resize: 'none', outline: 'none' }}
+                                  />
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                                    <div style={{ display: 'flex', gap: '2px' }}>
+                                      {stickyColors.map(color => (
+                                        <button 
+                                          key={color}
+                                          onClick={() => {
+                                            const updatedProjects = creative[status].map(proj => 
+                                              proj.id === p.id 
+                                                ? { ...proj, stickies: (proj.stickies || []).map(s => s.id === sticky.id ? { ...s, color } : s) }
+                                                : proj
+                                            );
+                                            setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                                          }}
+                                          style={{ width: '12px', height: '12px', background: color, border: sticky.color === color ? '2px solid #333' : '1px solid rgba(0,0,0,0.2)', borderRadius: '50%', cursor: 'pointer' }}
+                                        />
+                                      ))}
+                                    </div>
+                                    <button 
+                                      onClick={() => {
+                                        const updatedProjects = creative[status].map(proj => 
+                                          proj.id === p.id 
+                                            ? { ...proj, stickies: (proj.stickies || []).filter(s => s.id !== sticky.id) }
+                                            : proj
+                                        );
+                                        setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                                      }}
+                                      style={{ padding: '1px 4px', fontSize: '8px', background: 'rgba(0,0,0,0.2)', color: '#333', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                    >🗑️</button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                          {filteredProjectStickies.length === 0 && currentFilter !== 'all' && (
+                            <div style={{ padding: '8px 10px', fontSize: '10px', color: theme.textSecondary, textAlign: 'center' }}>
+                              この色の付箋はありません
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    
                     {/* 追加ボタン */}
                     <div style={{ display: 'flex', gap: '4px', padding: '6px 10px', flexWrap: 'wrap' }}>
                       <button onClick={() => addItem(p.id, status, 'chapter')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accent, border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 話</button>
                       <button onClick={() => addItem(p.id, status, 'section')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accentLight, border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 章</button>
                       <button onClick={() => addItem(p.id, status, 'memo')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.textSecondary, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> メモ</button>
+                      <button onClick={() => {
+                        const colors = data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'];
+                        const newSticky = { id: `sticky-${Date.now()}`, content: '', color: colors[(p.stickies || []).length % colors.length], createdAt: new Date().toISOString() };
+                        const updatedProjects = creative[status].map(proj => 
+                          proj.id === p.id ? { ...proj, stickies: [...(proj.stickies || []), newSticky] } : proj
+                        );
+                        setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                      }} style={{ padding: '4px 8px', fontSize: '10px', background: '#FFEB3B', border: 'none', borderRadius: '4px', color: '#333', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>📌 付箋</button>
                     </div>
                   </div>
                 )}
@@ -1911,17 +2116,20 @@
           <div style={{ display: 'flex', borderBottom: `1px solid ${theme.border}` }}>
             <button onClick={() => setActiveTab('works')} style={{ flex: 1, padding: '6px', fontSize: '11px', fontWeight: '500', background: activeTab === 'works' ? theme.bg : 'transparent', color: activeTab === 'works' ? theme.accent : theme.textSecondary, border: 'none', borderBottom: activeTab === 'works' ? `2px solid ${theme.accent}` : '2px solid transparent', cursor: 'pointer' }}>📁 作品</button>
             <button onClick={() => setActiveTab('ideas')} style={{ flex: 1, padding: '6px', fontSize: '11px', fontWeight: '500', background: activeTab === 'ideas' ? theme.bg : 'transparent', color: activeTab === 'ideas' ? theme.accent : theme.textSecondary, border: 'none', borderBottom: activeTab === 'ideas' ? `2px solid ${theme.accent}` : '2px solid transparent', cursor: 'pointer' }}>💡 ネタ ({ideas.length})</button>
+            <button onClick={() => setActiveTab('stickies')} style={{ flex: 1, padding: '6px', fontSize: '11px', fontWeight: '500', background: activeTab === 'stickies' ? theme.bg : 'transparent', color: activeTab === 'stickies' ? theme.accent : theme.textSecondary, border: 'none', borderBottom: activeTab === 'stickies' ? `2px solid ${theme.accent}` : '2px solid transparent', cursor: 'pointer' }}>📌 付箋 ({stickies.length})</button>
           </div>
 
-          {/* タグフィルター */}
-          <div style={{ padding: '5px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-            <button onClick={() => setTagFilter('all')} style={{ padding: '2px 6px', fontSize: '9px', background: tagFilter === 'all' ? theme.accent : theme.bgTertiary, color: tagFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>All</button>
-            {usedTags.map(tag => (
-              <button key={tag} onClick={() => setTagFilter(tag)} style={{ padding: '2px 6px', fontSize: '9px', background: tagFilter === tag ? theme.accent : theme.bgTertiary, color: tagFilter === tag ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>{tag}</button>
-            ))}
-          </div>
+          {/* タグフィルター（作品・ネタタブのみ） */}
+          {(activeTab === 'works' || activeTab === 'ideas') && (
+            <div style={{ padding: '5px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+              <button onClick={() => setTagFilter('all')} style={{ padding: '2px 6px', fontSize: '9px', background: tagFilter === 'all' ? theme.accent : theme.bgTertiary, color: tagFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>All</button>
+              {usedTags.map(tag => (
+                <button key={tag} onClick={() => setTagFilter(tag)} style={{ padding: '2px 6px', fontSize: '9px', background: tagFilter === tag ? theme.accent : theme.bgTertiary, color: tagFilter === tag ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>{tag}</button>
+              ))}
+            </div>
+          )}
 
-          {activeTab === 'works' ? (
+          {activeTab === 'works' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
               <div style={{ padding: '6px 10px', borderBottom: `1px solid ${theme.border}`, fontSize: '10px', color: theme.textSecondary }}>
                 総文字数: <span style={{ color: theme.accent, fontWeight: '600' }}>{totalChars().toLocaleString()}</span> 字
@@ -1931,7 +2139,9 @@
               {renderList(creative.onHold, 'onHold', '制作中断', '🚫', true)}
               {renderList(creative.completed, 'completed', '完了', '✅', true)}
             </div>
-          ) : (
+          )}
+
+          {activeTab === 'ideas' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
               <div style={{ padding: '8px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '10px', color: theme.textSecondary }}>クリックで編集</span>
@@ -1972,6 +2182,115 @@
               </div>
             </div>
           )}
+
+          {activeTab === 'stickies' && (() => {
+            const stickyColors = data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'];
+            const colorNames = { '#FFEB3B': '🟡', '#FF9800': '🟠', '#E91E63': '🩷', '#4CAF50': '🟢', '#2196F3': '🔵', '#9C27B0': '🟣' };
+            const filteredStickies = stickyColorFilter === 'all' ? stickies : stickies.filter(s => s.color === stickyColorFilter);
+            const allCollapsed = filteredStickies.length > 0 && filteredStickies.every(s => collapsedStickies[s.id]);
+            
+            return (
+              <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+                {/* ヘッダー */}
+                <div style={{ padding: '8px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '10px', color: theme.textSecondary }}>創作全般のメモ</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => {
+                      const newCollapsed = {};
+                      filteredStickies.forEach(s => { newCollapsed[s.id] = !allCollapsed; });
+                      setCollapsedStickies(prev => ({ ...prev, ...newCollapsed }));
+                    }} style={{ padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '9px' }}>
+                      {allCollapsed ? '📂 全開く' : '📁 全閉じる'}
+                    </button>
+                    <button onClick={() => {
+                      const newSticky = { id: `sticky-${Date.now()}`, content: '', color: stickyColors[stickies.length % stickyColors.length], createdAt: new Date().toISOString() };
+                      setData({ ...data, creative: { ...creative, stickies: [newSticky, ...stickies] } });
+                    }} style={{ padding: '4px 10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
+                  </div>
+                </div>
+                
+                {/* 色フィルター */}
+                <div style={{ padding: '6px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '9px', color: theme.textSecondary }}>色:</span>
+                  <button onClick={() => setStickyColorFilter('all')} style={{ padding: '2px 8px', fontSize: '9px', background: stickyColorFilter === 'all' ? theme.accent : theme.bgTertiary, color: stickyColorFilter === 'all' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>All</button>
+                  {stickyColors.map(color => {
+                    const count = stickies.filter(s => s.color === color).length;
+                    if (count === 0) return null;
+                    return (
+                      <button key={color} onClick={() => setStickyColorFilter(color)} style={{ padding: '2px 8px', fontSize: '9px', background: stickyColorFilter === color ? color : theme.bgTertiary, color: stickyColorFilter === color ? '#333' : theme.textSecondary, border: stickyColorFilter === color ? '2px solid #333' : `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
+                        {colorNames[color] || '●'} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {/* 付箋一覧 */}
+                <div style={{ flex: 1, overflow: 'auto', padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {filteredStickies.map(sticky => {
+                    const isCollapsed = collapsedStickies[sticky.id];
+                    return (
+                      <div key={sticky.id} style={{ background: sticky.color, borderRadius: '8px', padding: isCollapsed ? '8px 12px' : '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', position: 'relative' }}>
+                        {isCollapsed ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => setCollapsedStickies(prev => ({ ...prev, [sticky.id]: false }))}>
+                            <span style={{ color: '#333', fontSize: '12px' }}>▶</span>
+                            <span style={{ flex: 1, fontSize: '11px', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {sticky.content ? sticky.content.substring(0, 30) + (sticky.content.length > 30 ? '...' : '') : '(空)'}
+                            </span>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); if (confirm('この付箋を削除しますか？')) setData({ ...data, creative: { ...creative, stickies: stickies.filter(s => s.id !== sticky.id) } }); }}
+                              style={{ padding: '2px 6px', fontSize: '9px', background: 'rgba(0,0,0,0.2)', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >🗑️</button>
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                              <span style={{ color: '#333', fontSize: '12px', cursor: 'pointer' }} onClick={() => setCollapsedStickies(prev => ({ ...prev, [sticky.id]: true }))}>▼ 折りたたむ</span>
+                            </div>
+                            <textarea 
+                              value={sticky.content} 
+                              onChange={(e) => {
+                                const newStickies = stickies.map(s => s.id === sticky.id ? { ...s, content: e.target.value } : s);
+                                setData({ ...data, creative: { ...creative, stickies: newStickies } });
+                              }}
+                              placeholder="メモを入力..."
+                              style={{ width: '100%', minHeight: '60px', background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '4px', padding: '8px', fontSize: '12px', lineHeight: '1.6', color: '#333', resize: 'none', outline: 'none', fontFamily: '"Noto Sans JP", sans-serif' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                {stickyColors.map(color => (
+                                  <button 
+                                    key={color}
+                                    onClick={() => {
+                                      const newStickies = stickies.map(s => s.id === sticky.id ? { ...s, color } : s);
+                                      setData({ ...data, creative: { ...creative, stickies: newStickies } });
+                                    }}
+                                    style={{ width: '16px', height: '16px', background: color, border: sticky.color === color ? '2px solid #333' : '1px solid rgba(0,0,0,0.2)', borderRadius: '50%', cursor: 'pointer' }}
+                                  />
+                                ))}
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  if (confirm('この付箋を削除しますか？')) {
+                                    setData({ ...data, creative: { ...creative, stickies: stickies.filter(s => s.id !== sticky.id) } });
+                                  }
+                                }}
+                                style={{ padding: '2px 6px', fontSize: '9px', background: 'rgba(0,0,0,0.2)', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                              >🗑️</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {filteredStickies.length === 0 && (
+                    <div style={{ textAlign: 'center', color: theme.textSecondary, padding: '40px 20px', fontSize: '12px' }}>
+                      {stickyColorFilter === 'all' ? '付箋がありません' : 'この色の付箋はありません'}<br/>「+ 追加」で作成してね
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       );
     };
@@ -1982,8 +2301,95 @@
       const [showReplace, setShowReplace] = useState(false);
       const [searchText, setSearchText] = useState('');
       const [replaceText, setReplaceText] = useState('');
+      const [showHighlights, setShowHighlights] = useState(false);
+      const [selectedText, setSelectedText] = useState('');
+      const [selectionPos, setSelectionPos] = useState(null);
+      const [newHighlightNote, setNewHighlightNote] = useState('');
+      const [showAddHighlight, setShowAddHighlight] = useState(false);
+      const [highlightColor, setHighlightColor] = useState('#FFEB3B');
       const textareaRef = useRef(null);
       const scrollPosRef = useRef(0);
+
+      // ハイライトデータを取得・更新する関数
+      const getHighlights = () => {
+        if (!pane.projectId || !pane.status) return [];
+        const project = data.creative[pane.status]?.find(p => p.id === pane.projectId);
+        const item = project?.items?.find(i => i.id === pane.id);
+        return item?.highlights || [];
+      };
+
+      const setHighlights = (newHighlights) => {
+        if (!pane.projectId || !pane.status) return;
+        const updatedProjects = data.creative[pane.status].map(p => {
+          if (p.id === pane.projectId) {
+            return {
+              ...p,
+              items: p.items.map(item => 
+                item.id === pane.id ? { ...item, highlights: newHighlights } : item
+              )
+            };
+          }
+          return p;
+        });
+        setData({ ...data, creative: { ...data.creative, [pane.status]: updatedProjects } });
+      };
+
+      const highlights = getHighlights();
+
+      // テキスト選択時の処理
+      const handleTextSelect = () => {
+        if (!textareaRef.current) return;
+        const start = textareaRef.current.selectionStart;
+        const end = textareaRef.current.selectionEnd;
+        const text = textareaRef.current.value.substring(start, end);
+        if (text.length > 0) {
+          setSelectedText(text);
+          setSelectionPos({ start, end });
+        } else {
+          setSelectedText('');
+          setSelectionPos(null);
+        }
+      };
+
+      // ハイライト追加
+      const addHighlight = () => {
+        if (!selectedText) return;
+        const newHighlight = {
+          id: `hl-${Date.now()}`,
+          text: selectedText,
+          note: newHighlightNote,
+          color: highlightColor,
+          position: selectionPos,
+          createdAt: new Date().toISOString()
+        };
+        setHighlights([...highlights, newHighlight]);
+        setSelectedText('');
+        setSelectionPos(null);
+        setNewHighlightNote('');
+        setShowAddHighlight(false);
+      };
+
+      // ハイライト削除
+      const deleteHighlight = (id) => {
+        setHighlights(highlights.filter(h => h.id !== id));
+      };
+
+      // ハイライト箇所にジャンプ
+      const jumpToHighlight = (highlight) => {
+        if (!textareaRef.current) return;
+        const content = textareaRef.current.value;
+        const index = content.indexOf(highlight.text);
+        if (index !== -1) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(index, index + highlight.text.length);
+          // スクロール位置を調整
+          const lineHeight = 24;
+          const linesBeforeSelection = content.substring(0, index).split('\n').length;
+          textareaRef.current.scrollTop = Math.max(0, (linesBeforeSelection - 3) * lineHeight);
+        } else {
+          alert('該当箇所が見つかりません（テキストが変更された可能性があります）');
+        }
+      };
 
       // スクロール位置を保持してonUpdate
       const handleTextChange = (e) => {
@@ -1991,7 +2397,6 @@
           scrollPosRef.current = textareaRef.current.scrollTop;
         }
         onUpdate(e.target.value);
-        // 次のレンダリング後にスクロール位置を復元
         requestAnimationFrame(() => {
           if (textareaRef.current) {
             textareaRef.current.scrollTop = scrollPosRef.current;
@@ -2058,9 +2463,17 @@
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {pane.type === 'chapter' && (
-            <div style={{ padding: '6px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: '11px', color: theme.textSecondary, background: theme.bgSecondary, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '6px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: '11px', color: theme.textSecondary, background: theme.bgSecondary, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
               <span><span style={{ color: theme.accent, fontWeight: '600' }}>{charCount.toLocaleString()}</span> 字</span>
-              <button onClick={() => setShowReplace(!showReplace)} style={{ padding: '2px 8px', fontSize: '10px', background: showReplace ? theme.accent : theme.bgTertiary, color: showReplace ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>🔍 置換</button>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                {selectedText && (
+                  <button onClick={() => setShowAddHighlight(true)} style={{ padding: '2px 8px', fontSize: '10px', background: '#FFEB3B', color: '#333', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>📌 選択部分に付箋</button>
+                )}
+                <button onClick={() => setShowHighlights(!showHighlights)} style={{ padding: '2px 8px', fontSize: '10px', background: showHighlights ? theme.accent : theme.bgTertiary, color: showHighlights ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                  📌 付箋 ({highlights.length})
+                </button>
+                <button onClick={() => setShowReplace(!showReplace)} style={{ padding: '2px 8px', fontSize: '10px', background: showReplace ? theme.accent : theme.bgTertiary, color: showReplace ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>🔍 置換</button>
+              </div>
             </div>
           )}
           {showReplace && pane.type === 'chapter' && (
@@ -2071,12 +2484,98 @@
               <button onClick={handleReplaceAll} style={{ padding: '4px 10px', fontSize: '10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>全置換</button>
             </div>
           )}
+          {/* 付箋追加モーダル */}
+          {showAddHighlight && selectedText && (
+            <div style={{ padding: '12px', borderBottom: `1px solid ${theme.border}`, background: highlightColor }}>
+              <div style={{ marginBottom: '8px', fontSize: '11px', color: '#333' }}>
+                <strong>選択テキスト:</strong> "{selectedText.substring(0, 50)}{selectedText.length > 50 ? '...' : ''}"
+              </div>
+              <textarea 
+                value={newHighlightNote}
+                onChange={(e) => setNewHighlightNote(e.target.value)}
+                placeholder="メモを入力（任意）..."
+                style={{ width: '100%', minHeight: '50px', padding: '8px', background: 'rgba(255,255,255,0.5)', border: 'none', borderRadius: '4px', fontSize: '12px', color: '#333', resize: 'none', outline: 'none', marginBottom: '8px' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {(data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0']).map(color => (
+                    <button 
+                      key={color}
+                      onClick={() => setHighlightColor(color)}
+                      style={{ width: '20px', height: '20px', background: color, border: highlightColor === color ? '2px solid #333' : '1px solid rgba(0,0,0,0.2)', borderRadius: '50%', cursor: 'pointer' }}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => { setShowAddHighlight(false); setNewHighlightNote(''); }} style={{ padding: '4px 12px', fontSize: '11px', background: 'rgba(0,0,0,0.2)', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>キャンセル</button>
+                  <button onClick={addHighlight} style={{ padding: '4px 12px', fontSize: '11px', background: '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📌 追加</button>
+                </div>
+              </div>
+            </div>
+          )}
           {pane.type === 'memo' ? (
             <div style={{ flex: 1, overflow: 'auto' }}>
               <OutlineEditor content={pane.content || ''} onChange={onUpdate} theme={theme} />
             </div>
           ) : (
-            <textarea ref={textareaRef} value={pane.content || ''} onChange={handleTextChange} placeholder="ここに執筆..." style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+              {/* テキストエリア */}
+              <textarea 
+                ref={textareaRef} 
+                value={pane.content || ''} 
+                onChange={handleTextChange} 
+                onSelect={handleTextSelect}
+                onMouseUp={handleTextSelect}
+                placeholder="ここに執筆..." 
+                style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} 
+              />
+              {/* ハイライト付箋パネル */}
+              {showHighlights && pane.type === 'chapter' && (
+                <div style={{ width: '220px', borderLeft: `1px solid ${theme.border}`, background: theme.bgSecondary, overflow: 'auto', flexShrink: 0 }}>
+                  <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: '11px', fontWeight: '600', color: theme.textSecondary }}>
+                    📌 ハイライト付箋
+                  </div>
+                  <div style={{ padding: '8px' }}>
+                    {highlights.length === 0 ? (
+                      <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '11px', color: theme.textSecondary }}>
+                        テキストを選択して<br/>「📌 選択部分に付箋」で追加
+                      </div>
+                    ) : (
+                      highlights.map(hl => (
+                        <div 
+                          key={hl.id} 
+                          style={{ 
+                            background: hl.color, 
+                            borderRadius: '6px', 
+                            padding: '8px', 
+                            marginBottom: '6px', 
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                          }}
+                          onClick={() => jumpToHighlight(hl)}
+                        >
+                          <div style={{ fontSize: '10px', color: '#333', marginBottom: '4px', fontStyle: 'italic', borderLeft: '2px solid #333', paddingLeft: '6px' }}>
+                            "{hl.text.substring(0, 30)}{hl.text.length > 30 ? '...' : ''}"
+                          </div>
+                          {hl.note && (
+                            <div style={{ fontSize: '11px', color: '#333', marginTop: '4px' }}>
+                              {hl.note}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                            <span style={{ fontSize: '9px', color: 'rgba(0,0,0,0.5)' }}>クリックでジャンプ</span>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); deleteHighlight(hl.id); }}
+                              style={{ padding: '2px 6px', fontSize: '9px', background: 'rgba(0,0,0,0.2)', color: '#333', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                            >🗑️</button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       );
@@ -2474,6 +2973,7 @@
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <button 
                 onClick={onSaveToGist}
+                onTouchEnd={(e) => { e.preventDefault(); onSaveToGist(); }}
                 disabled={!syncSettings.githubToken || !syncSettings.passwordHash || syncStatus === 'saving'}
                 style={{ 
                   padding: '10px 20px', 
@@ -2481,13 +2981,16 @@
                   color: (!syncSettings.githubToken || !syncSettings.passwordHash) ? theme.textSecondary : '#fff', 
                   border: 'none', borderRadius: '8px', cursor: (!syncSettings.githubToken || !syncSettings.passwordHash) ? 'not-allowed' : 'pointer', 
                   fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
-                  opacity: syncStatus === 'saving' ? 0.7 : 1
+                  opacity: syncStatus === 'saving' ? 0.7 : 1,
+                  WebkitTapHighlightColor: 'transparent',
+                  touchAction: 'manipulation'
                 }}
               >
                 <Icons.CloudUpload /> {syncStatus === 'saving' ? '保存中...' : 'Gistに保存'}
               </button>
               <button 
-                onClick={onLoadFromGist}
+                onClick={() => onLoadFromGist()}
+                onTouchEnd={(e) => { e.preventDefault(); onLoadFromGist(); }}
                 disabled={!syncSettings.githubToken || !syncSettings.gistId || !syncSettings.passwordHash || syncStatus === 'loading'}
                 style={{ 
                   padding: '10px 20px', 
@@ -2495,7 +2998,9 @@
                   color: (!syncSettings.githubToken || !syncSettings.gistId || !syncSettings.passwordHash) ? theme.textSecondary : '#fff', 
                   border: 'none', borderRadius: '8px', cursor: (!syncSettings.githubToken || !syncSettings.gistId || !syncSettings.passwordHash) ? 'not-allowed' : 'pointer', 
                   fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
-                  opacity: syncStatus === 'loading' ? 0.7 : 1
+                  opacity: syncStatus === 'loading' ? 0.7 : 1,
+                  WebkitTapHighlightColor: 'transparent',
+                  touchAction: 'manipulation'
                 }}
               >
                 <Icons.CloudDownload /> {syncStatus === 'loading' ? '読み込み中...' : 'Gistから読み込み'}
@@ -2681,8 +3186,11 @@
       const [activePaneId, setActivePaneId] = useState(null); // アクティブなペインのID
       const [paneWidths, setPaneWidths] = useState({}); // 各ペインの幅（flex値）
       const [resizingPane, setResizingPane] = useState(null); // リサイズ中のペインインデックス
+      const [draggingPaneId, setDraggingPaneId] = useState(null); // ドラッグ中のペインID
+      const [dragOverPaneId, setDragOverPaneId] = useState(null); // ドラッグオーバー中のペインID
       const [sidebarWidth, setSidebarWidth] = useState(280);
       const [isResizing, setIsResizing] = useState(false);
+      const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // サイドバー折りたたみ
       const [showFloatingTimer, setShowFloatingTimer] = useState(false); // フローティングタイマー表示
       
       // パスワード保護関連
@@ -2701,6 +3209,8 @@
         password: localStorage.getItem('noteAppRememberPw') === 'true' ? (localStorage.getItem('noteAppSavedPw') || '') : '', // 記憶ONなら保存されたパスワードを読み込み
       }));
       const [syncStatus, setSyncStatus] = useState(''); // '', 'saving', 'saved', 'loading', 'loaded', 'error'
+      const [showGistPasswordModal, setShowGistPasswordModal] = useState(false); // Gist読み込み用パスワードモーダル
+      const [gistPasswordInput, setGistPasswordInput] = useState(''); // Gist読み込み用パスワード入力
       
       // 起動時のパスワードチェック
       useEffect(() => {
@@ -2831,30 +3341,37 @@
       };
       
       // Gistから読み込み
-      const handleLoadFromGist = async () => {
+      const handleLoadFromGist = async (passwordFromModal) => {
         if (!syncSettings.githubToken || !syncSettings.gistId || !syncSettings.passwordHash) {
           alert('GitHubトークン、Gist ID、パスワードを設定してください');
           return;
         }
         
         // パスワードを取得
-        let password = syncSettings.password;
+        let password = syncSettings.password || passwordFromModal;
         if (!password) {
-          password = prompt('暗号化パスワードを入力してください：');
-          if (!password) return;
-          
-          // パスワード検証
-          const inputHash = await CryptoUtils.hashPassword(password);
-          if (inputHash !== syncSettings.passwordHash) {
-            alert('パスワードが間違っています');
-            return;
-          }
-          setSyncSettings(prev => ({ ...prev, password }));
-          // rememberPasswordがONならパスワードも保存
-          if (syncSettings.rememberPassword) {
-            localStorage.setItem('noteAppSavedPw', password);
-          }
+          // モーダルを表示してパスワード入力を求める
+          setShowGistPasswordModal(true);
+          return;
         }
+        
+        // パスワード検証
+        const inputHash = await CryptoUtils.hashPassword(password);
+        if (inputHash !== syncSettings.passwordHash) {
+          alert('パスワードが間違っています');
+          setGistPasswordInput('');
+          return;
+        }
+        
+        setSyncSettings(prev => ({ ...prev, password }));
+        // rememberPasswordがONならパスワードも保存
+        if (syncSettings.rememberPassword) {
+          localStorage.setItem('noteAppSavedPw', password);
+        }
+        
+        // モーダルを閉じる
+        setShowGistPasswordModal(false);
+        setGistPasswordInput('');
         
         if (!confirm('クラウドのデータで上書きしますか？\n（現在のローカルデータは失われます）')) {
           return;
@@ -2871,15 +3388,55 @@
           
           const decrypted = await CryptoUtils.decrypt(gistData.encrypted, password);
           
+          // 現在のローカルデータを取得
+          const currentData = JSON.parse(localStorage.getItem('noteAppDataV2') || '{}');
+          
+          // 新しいフィールドをマージ（古いバージョンで保存されたデータにない場合に保持）
+          const mergedData = {
+            ...decrypted,
+            // progressAdjustments: 古いデータになければ現在のデータを保持、またはデフォルト
+            progressAdjustments: decrypted.progressAdjustments || currentData.progressAdjustments || {},
+            // stickyColors: デフォルト
+            stickyColors: decrypted.stickyColors || currentData.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'],
+            // creative内のstickiesも保持
+            creative: {
+              ...decrypted.creative,
+              stickies: decrypted.creative?.stickies || currentData.creative?.stickies || [],
+            }
+          };
+          
+          // プロジェクト内の付箋とハイライトもマージ
+          ['inProgress', 'completed', 'onHold'].forEach(status => {
+            if (mergedData.creative[status]) {
+              mergedData.creative[status] = mergedData.creative[status].map(project => {
+                // 現在のデータから同じIDのプロジェクトを探す
+                const currentProject = currentData.creative?.[status]?.find(p => p.id === project.id);
+                return {
+                  ...project,
+                  // 付箋がなければ現在のを保持
+                  stickies: project.stickies || currentProject?.stickies || [],
+                  // itemsの中のhighlightsもマージ
+                  items: (project.items || []).map(item => {
+                    const currentItem = currentProject?.items?.find(i => i.id === item.id);
+                    return {
+                      ...item,
+                      highlights: item.highlights || currentItem?.highlights || []
+                    };
+                  })
+                };
+              });
+            }
+          });
+          
           // データの中身を確認
-          const inProgressCount = decrypted?.creative?.inProgress?.length || 0;
-          const completedCount = decrypted?.creative?.completed?.length || 0;
-          const onHoldCount = decrypted?.creative?.onHold?.length || 0;
-          const dailyMemoCount = decrypted?.dailyMemos?.length || 0;
-          const inputCount = decrypted?.input?.length || 0;
+          const inProgressCount = mergedData?.creative?.inProgress?.length || 0;
+          const completedCount = mergedData?.creative?.completed?.length || 0;
+          const onHoldCount = mergedData?.creative?.onHold?.length || 0;
+          const dailyMemoCount = mergedData?.dailyMemos?.length || 0;
+          const inputCount = mergedData?.input?.length || 0;
           
           // localStorageに保存
-          localStorage.setItem('noteAppDataV2', JSON.stringify(decrypted));
+          localStorage.setItem('noteAppDataV2', JSON.stringify(mergedData));
           
           // 成功メッセージ後にリロード
           alert(`読み込み完了！\n\n進行中: ${inProgressCount}\n完了: ${completedCount}\n中断: ${onHoldCount}\n日常メモ: ${dailyMemoCount}\nInput: ${inputCount}\n\nページを更新します。`);
@@ -3024,6 +3581,45 @@
           document.removeEventListener('mouseup', handlePaneMouseUp);
         };
       }, [resizingPane, openPanes, paneWidths]);
+
+      // ペインのドラッグ&ドロップで入れ替え
+      const handlePaneDragStart = (e, paneId) => {
+        setDraggingPaneId(paneId);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', paneId);
+      };
+      
+      const handlePaneDragOver = (e, paneId) => {
+        e.preventDefault();
+        if (draggingPaneId && draggingPaneId !== paneId) {
+          setDragOverPaneId(paneId);
+        }
+      };
+      
+      const handlePaneDragLeave = () => {
+        setDragOverPaneId(null);
+      };
+      
+      const handlePaneDrop = (e, targetPaneId) => {
+        e.preventDefault();
+        if (draggingPaneId && draggingPaneId !== targetPaneId) {
+          const dragIndex = openPanes.findIndex(p => p.id === draggingPaneId);
+          const dropIndex = openPanes.findIndex(p => p.id === targetPaneId);
+          if (dragIndex !== -1 && dropIndex !== -1) {
+            const newPanes = [...openPanes];
+            const [draggedPane] = newPanes.splice(dragIndex, 1);
+            newPanes.splice(dropIndex, 0, draggedPane);
+            setOpenPanes(newPanes);
+          }
+        }
+        setDraggingPaneId(null);
+        setDragOverPaneId(null);
+      };
+      
+      const handlePaneDragEnd = () => {
+        setDraggingPaneId(null);
+        setDragOverPaneId(null);
+      };
 
       const updateItemContent = (itemId, content, paneItem) => {
         if (!paneItem) return;
@@ -3224,11 +3820,35 @@
           {/* PC用サイドバー（創作時のみ） */}
           {!isMobile && currentSection === 'creative' && (
             <>
-              <div style={{ width: sidebarWidth, background: theme.bgSecondary, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}`, fontWeight: '600', fontSize: '15px' }}>✏️ 創作</div>
-                <CreativeSection data={data} setData={setData} selectedItem={selectedItem} setSelectedItem={setSelectedItem} openInNewPane={openInNewPane} theme={theme} sidebarWidth={sidebarWidth} />
-              </div>
-              <div className="resizer" onMouseDown={handleMouseDown} style={{ background: isResizing ? theme.accent : 'transparent' }} />
+              {sidebarCollapsed ? (
+                /* 折りたたみ時：細いバーとトグルボタン */
+                <div style={{ width: '40px', background: theme.bgSecondary, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '12px' }}>
+                  <button 
+                    onClick={() => setSidebarCollapsed(false)}
+                    style={{ background: theme.accent, border: 'none', color: '#fff', cursor: 'pointer', padding: '8px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}
+                    title="サイドバーを開く"
+                  >
+                    <Icons.ChevronRight />
+                  </button>
+                  <div style={{ writingMode: 'vertical-rl', fontSize: '12px', color: theme.textSecondary, letterSpacing: '2px' }}>✏️ 創作</div>
+                </div>
+              ) : (
+                /* 展開時：通常のサイドバー */
+                <div style={{ width: sidebarWidth, background: theme.bgSecondary, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, fontWeight: '600', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>✏️ 創作</span>
+                    <button 
+                      onClick={() => setSidebarCollapsed(true)}
+                      style={{ background: theme.bgTertiary, border: `1px solid ${theme.border}`, color: theme.textSecondary, cursor: 'pointer', padding: '4px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center' }}
+                      title="サイドバーを閉じる"
+                    >
+                      <Icons.ChevronLeft />
+                    </button>
+                  </div>
+                  <CreativeSection data={data} setData={setData} selectedItem={selectedItem} setSelectedItem={setSelectedItem} openInNewPane={openInNewPane} theme={theme} sidebarWidth={sidebarWidth} />
+                </div>
+              )}
+              {!sidebarCollapsed && <div className="resizer" onMouseDown={handleMouseDown} style={{ background: isResizing ? theme.accent : 'transparent' }} />}
             </>
           )}
 
@@ -3307,11 +3927,37 @@
                             onMouseOut={(e) => { if (resizingPane !== index - 1) e.target.style.background = theme.border; }}
                           />
                         )}
-                        <div style={{ flex: paneWidths[pane.id] || 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: '300px' }}>
+                        <div 
+                          style={{ 
+                            flex: paneWidths[pane.id] || 1, 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            overflow: 'hidden', 
+                            minWidth: '300px',
+                            border: dragOverPaneId === pane.id ? `2px dashed ${theme.accent}` : '2px solid transparent',
+                            opacity: draggingPaneId === pane.id ? 0.5 : 1,
+                            transition: 'border 0.2s, opacity 0.2s'
+                          }}
+                          onDragOver={(e) => handlePaneDragOver(e, pane.id)}
+                          onDragLeave={handlePaneDragLeave}
+                          onDrop={(e) => handlePaneDrop(e, pane.id)}
+                        >
                           <div 
+                            draggable
+                            onDragStart={(e) => handlePaneDragStart(e, pane.id)}
+                            onDragEnd={handlePaneDragEnd}
                             onClick={() => setActivePaneId(pane.id)}
-                            style={{ padding: '8px 12px', background: theme.bgSecondary, borderBottom: activePaneId === pane.id ? `2px solid ${theme.accent}` : `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                            style={{ 
+                              padding: '8px 12px', 
+                              background: dragOverPaneId === pane.id ? theme.highlight : theme.bgSecondary, 
+                              borderBottom: activePaneId === pane.id ? `2px solid ${theme.accent}` : `1px solid ${theme.border}`, 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '8px', 
+                              cursor: 'grab'
+                            }}
                           >
+                            <span style={{ cursor: 'grab', color: theme.textSecondary, fontSize: '12px' }}>⠿</span>
                             {pane.isIdea ? <Icons.Lightbulb /> : pane.isHoldItem ? <Icons.Pause /> : pane.type === 'memo' ? <Icons.File /> : <Icons.FileText />}
                             <span style={{ flex: 1, fontSize: '12px', fontWeight: activePaneId === pane.id ? '600' : '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: activePaneId === pane.id ? theme.accent : theme.text }}>
                               {pane.isIdea ? pane.title : pane.name}
@@ -3371,6 +4017,65 @@
                 </button>
               )}
             </>
+          )}
+          
+          {/* Gist読み込み用パスワードモーダル */}
+          {showGistPasswordModal && (
+            <div style={{ 
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+              background: 'rgba(0,0,0,0.7)', zIndex: 2000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '20px'
+            }}>
+              <div style={{ 
+                background: theme.bgSecondary, borderRadius: '16px', padding: '24px',
+                maxWidth: '320px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+              }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', textAlign: 'center' }}>🔐 パスワード入力</h3>
+                <p style={{ fontSize: '12px', color: theme.textSecondary, marginBottom: '16px', textAlign: 'center' }}>Gistからデータを読み込むにはパスワードが必要です</p>
+                <input 
+                  type="password"
+                  value={gistPasswordInput}
+                  onChange={(e) => setGistPasswordInput(e.target.value)}
+                  placeholder="暗号化パスワード"
+                  autoFocus
+                  style={{ 
+                    width: '100%', padding: '12px', fontSize: '14px',
+                    background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: '8px',
+                    color: theme.text, marginBottom: '16px', outline: 'none'
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && gistPasswordInput) {
+                      handleLoadFromGist(gistPasswordInput);
+                    }
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button 
+                    onClick={() => { setShowGistPasswordModal(false); setGistPasswordInput(''); }}
+                    style={{ 
+                      flex: 1, padding: '12px', fontSize: '14px',
+                      background: theme.bgTertiary, color: theme.textSecondary, 
+                      border: 'none', borderRadius: '8px', cursor: 'pointer'
+                    }}
+                  >
+                    キャンセル
+                  </button>
+                  <button 
+                    onClick={() => handleLoadFromGist(gistPasswordInput)}
+                    disabled={!gistPasswordInput}
+                    style={{ 
+                      flex: 1, padding: '12px', fontSize: '14px',
+                      background: gistPasswordInput ? theme.accent : theme.bgTertiary, 
+                      color: gistPasswordInput ? '#fff' : theme.textSecondary, 
+                      border: 'none', borderRadius: '8px', cursor: gistPasswordInput ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    読み込み
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       );
