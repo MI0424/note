@@ -1359,6 +1359,7 @@
       const [stickyColorFilter, setStickyColorFilter] = useState('all');
       const [collapsedStickies, setCollapsedStickies] = useState({});
       const [projectStickyFilter, setProjectStickyFilter] = useState({}); // 作品別付箋の色フィルター
+      const [ideaStatusFilter, setIdeaStatusFilter] = useState('all'); // ネタのステータスフィルター
 
       const ideas = creative.ideas || [];
       const stickies = creative.stickies || [];
@@ -1755,7 +1756,11 @@
         return projects.filter(p => (p.tags || []).includes(tagFilter));
       };
 
-      const filteredIdeas = tagFilter === 'all' ? ideas : ideas.filter(i => (i.tags || []).includes(tagFilter));
+      const filteredIdeas = ideas.filter(i => {
+        const matchTag = tagFilter === 'all' || (i.tags || []).includes(tagFilter);
+        const matchStatus = ideaStatusFilter === 'all' || i.status === ideaStatusFilter;
+        return matchTag && matchStatus;
+      });
 
       const renderList = (projects, status, title, icon, collapsible = false) => {
         const filteredProjects = filterByTag(projects);
@@ -2259,8 +2264,32 @@
                 <span style={{ fontSize: '10px', color: theme.textSecondary }}>クリックで編集</span>
                 <button onClick={addIdea} style={{ padding: '4px 10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
               </div>
+              {/* ステータスフィルター */}
+              <div style={{ padding: '6px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '9px', color: theme.textSecondary }}>絞込:</span>
+                {['all', 'unused', 'tweeted', 'posted', 'used'].map(s => {
+                  const count = s === 'all' ? ideas.length : ideas.filter(i => i.status === s).length;
+                  if (s !== 'all' && count === 0) return null;
+                  return (
+                    <button 
+                      key={s}
+                      onClick={() => setIdeaStatusFilter(s)}
+                      style={{ 
+                        padding: '2px 6px', fontSize: '9px', borderRadius: '4px', cursor: 'pointer',
+                        background: ideaStatusFilter === s ? (s === 'all' ? theme.accent : statusColors[s] || theme.accent) : theme.bgTertiary,
+                        color: ideaStatusFilter === s ? '#fff' : theme.textSecondary,
+                        border: 'none'
+                      }}
+                    >
+                      {s === 'all' ? 'すべて' : statusLabels[s]} ({count})
+                    </button>
+                  );
+                })}
+              </div>
               <div style={{ padding: '8px' }}>
-                {filteredIdeas.map(idea => (
+                {filteredIdeas.map(idea => {
+                  const charCount = (idea.content || '').replace(/[\s\n]/g, '').length;
+                  return (
                   <div key={idea.id} onClick={() => setSelectedItem({ ...idea, isIdea: true })} style={{ padding: '10px 12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedItem?.id === idea.id ? theme.highlight : theme.bgTertiary, border: `1px solid ${selectedItem?.id === idea.id ? theme.accent : 'transparent'}` }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <Icons.Lightbulb />
@@ -2269,6 +2298,7 @@
                       ) : (
                         <span onDoubleClick={(e) => { e.stopPropagation(); setEditingIdeaId(idea.id); }} style={{ flex: 1, fontSize: '12px', fontWeight: '500' }}>{idea.title}</span>
                       )}
+                      <span style={{ fontSize: '9px', color: charCount >= 900 && charCount <= 1100 ? theme.success : theme.accent, fontWeight: '500' }}>{charCount.toLocaleString()}字</span>
                       <span style={{ fontSize: '9px', padding: '2px 6px', background: statusColors[idea.status], color: '#fff', borderRadius: '4px' }}>{statusLabels[idea.status]}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
@@ -2283,13 +2313,20 @@
                       {idea.status === 'unused' && (
                         <button onClick={(e) => { e.stopPropagation(); updateIdea(idea.id, 'status', 'tweeted'); }} style={{ padding: '3px 8px', fontSize: '9px', background: theme.warning, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📱 ツイノベ化</button>
                       )}
+                      {idea.status === 'tweeted' && (
+                        <button onClick={(e) => { e.stopPropagation(); updateIdea(idea.id, 'status', 'posted'); }} style={{ padding: '3px 8px', fontSize: '9px', background: '#9b59b6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✓ 投稿済みに</button>
+                      )}
+                      {idea.status === 'posted' && (
+                        <button onClick={(e) => { e.stopPropagation(); updateIdea(idea.id, 'status', 'tweeted'); }} style={{ padding: '3px 8px', fontSize: '9px', background: theme.warning, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>↩ 未投稿に戻す</button>
+                      )}
                       {(idea.status === 'unused' || idea.status === 'tweeted') && (
                         <button onClick={(e) => { e.stopPropagation(); convertIdeaToProject(idea); }} style={{ padding: '3px 8px', fontSize: '9px', background: theme.success, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>→ 作品化</button>
                       )}
                       <button onClick={(e) => { e.stopPropagation(); deleteIdea(idea.id); }} style={{ padding: '3px 8px', fontSize: '9px', background: theme.error, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>削除</button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 {filteredIdeas.length === 0 && <div style={{ textAlign: 'center', color: theme.textSecondary, padding: '40px 20px', fontSize: '12px' }}>ネタがありません<br/>「+ 追加」で作成してね</div>}
               </div>
             </div>
@@ -2536,6 +2573,7 @@
       if (pane.isIdea) {
         const ideas = data.creative.ideas || [];
         const currentIdea = ideas.find(i => i.id === pane.id) || pane;
+        const ideaCharCount = (currentIdea.content || '').replace(/[\s\n]/g, '').length;
         
         const updateIdea = (field, value) => {
           const newIdeas = ideas.map(i => i.id === pane.id ? { ...i, [field]: value } : i);
@@ -2551,6 +2589,17 @@
                 <option value="posted">投稿済</option>
                 <option value="used">使用済</option>
               </select>
+              <div style={{ flex: 1 }} />
+              <span style={{ 
+                fontSize: '12px', 
+                fontWeight: '600',
+                color: ideaCharCount >= 900 && ideaCharCount <= 1100 ? theme.success : ideaCharCount > 1100 ? theme.error : theme.textSecondary
+              }}>
+                {ideaCharCount.toLocaleString()} 字
+                {ideaCharCount >= 900 && ideaCharCount <= 1100 && ' ✓'}
+                {ideaCharCount > 1100 && ' (長め)'}
+              </span>
+              <span style={{ fontSize: '10px', color: theme.textSecondary }}>目安: 1,000字</span>
             </div>
             <textarea value={currentIdea.content || ''} onChange={(e) => { updateIdea('content', e.target.value); onUpdate(e.target.value); }} placeholder="ネタの詳細..." style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
           </div>
@@ -2704,6 +2753,7 @@
       if (item.isIdea) {
         const ideas = data.creative.ideas || [];
         const currentIdea = ideas.find(i => i.id === item.id) || item;
+        const ideaCharCount = (currentIdea.content || '').replace(/[\s\n]/g, '').length;
         
         const updateIdea = (field, value) => {
           const newIdeas = ideas.map(i => i.id === item.id ? { ...i, [field]: value } : i);
@@ -2734,6 +2784,19 @@
                 <option value="posted">投稿済</option>
                 <option value="used">使用済</option>
               </select>
+            </div>
+            {/* 文字数カウント */}
+            <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: theme.bgSecondary }}>
+              <span style={{ fontSize: '10px', color: theme.textSecondary }}>目安: 1,000字</span>
+              <span style={{ 
+                fontSize: '13px', 
+                fontWeight: '600',
+                color: ideaCharCount >= 900 && ideaCharCount <= 1100 ? theme.success : ideaCharCount > 1100 ? theme.error : theme.textSecondary
+              }}>
+                {ideaCharCount.toLocaleString()} 字
+                {ideaCharCount >= 900 && ideaCharCount <= 1100 && ' ✓'}
+                {ideaCharCount > 1100 && ' (長め)'}
+              </span>
             </div>
             {/* タグ */}
             <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: theme.bgSecondary }}>
@@ -2866,16 +2929,22 @@
                 <span style={{ fontWeight: '600' }}>💡 ネタ保管庫</span>
                 <button onClick={addIdea} style={{ padding: '6px 12px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
               </div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {['all', 'unused', 'tweeted', 'posted', 'used'].map(f => (
-                  <button key={f} onClick={() => setFilter(f)} style={{ flex: 1, padding: '6px', fontSize: '10px', background: filter === f ? theme.accent : theme.bgTertiary, color: filter === f ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                    {f === 'all' ? 'すべて' : statusLabels[f]}
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {['all', 'unused', 'tweeted', 'posted', 'used'].map(f => {
+                  const count = f === 'all' ? ideas.length : ideas.filter(i => i.status === f).length;
+                  if (f !== 'all' && count === 0) return null;
+                  return (
+                  <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 8px', fontSize: '10px', background: filter === f ? (f === 'all' ? theme.accent : statusColors[f]) : theme.bgTertiary, color: filter === f ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                    {f === 'all' ? 'すべて' : statusLabels[f]} ({count})
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
-              {filteredIdeas.map(idea => (
+              {filteredIdeas.map(idea => {
+                const charCount = (idea.content || '').replace(/[\s\n]/g, '').length;
+                return (
                 <div key={idea.id} onClick={() => setSelectedIdea(idea)} style={{ padding: '12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedIdea?.id === idea.id ? theme.highlight : 'transparent', border: `1px solid ${selectedIdea?.id === idea.id ? theme.accent : 'transparent'}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                     {editingId === idea.id ? (
@@ -2883,13 +2952,14 @@
                     ) : (
                       <span onDoubleClick={(e) => { e.stopPropagation(); setEditingId(idea.id); }} style={{ flex: 1, fontWeight: '500', fontSize: '13px' }}>{idea.title}</span>
                     )}
+                    <span style={{ fontSize: '10px', color: charCount >= 900 && charCount <= 1100 ? theme.success : theme.textSecondary, fontWeight: '500' }}>{charCount.toLocaleString()}字</span>
                     <span style={{ fontSize: '10px', padding: '2px 6px', background: statusColors[idea.status], color: '#fff', borderRadius: '4px' }}>
                       {statusLabels[idea.status]}
                     </span>
                   </div>
                   {/* タグ表示 */}
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                    {idea.tags.map(tag => (
+                    {(idea.tags || []).map(tag => (
                       <span key={tag} style={{ fontSize: '10px', padding: '2px 6px', background: theme.bgTertiary, borderRadius: '4px', color: theme.textSecondary }}>{tag}</span>
                     ))}
                   </div>
@@ -2899,6 +2969,9 @@
                     </div>
                   )}
                 </div>
+                );
+              })}
+                </div>
               ))}
               {filteredIdeas.length === 0 && <div style={{ textAlign: 'center', color: theme.textSecondary, padding: '40px 20px', fontSize: '13px' }}>ネタがありません<br/>「+ 追加」で作成してね</div>}
             </div>
@@ -2906,7 +2979,9 @@
 
           {/* エディタ */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: theme.bg }}>
-            {selectedIdea ? (
+            {selectedIdea ? (() => {
+              const editorCharCount = (selectedIdea.content || '').replace(/[\s\n]/g, '').length;
+              return (
               <>
                 <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: '12px', background: theme.bgSecondary }}>
                   <span style={{ fontWeight: '500', fontSize: '15px' }}>{selectedIdea.title}</span>
@@ -2919,10 +2994,23 @@
                   </select>
                   <button onClick={() => deleteIdea(selectedIdea.id)} style={{ padding: '6px 12px', background: theme.error, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>削除</button>
                 </div>
+                {/* 文字数カウント */}
+                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: theme.bgSecondary }}>
+                  <span style={{ fontSize: '11px', color: theme.textSecondary }}>目安: 1,000字</span>
+                  <span style={{ 
+                    fontSize: '13px', 
+                    fontWeight: '600',
+                    color: editorCharCount >= 900 && editorCharCount <= 1100 ? theme.success : editorCharCount > 1100 ? theme.error : theme.textSecondary
+                  }}>
+                    {editorCharCount.toLocaleString()} 字
+                    {editorCharCount >= 900 && editorCharCount <= 1100 && ' ✓'}
+                    {editorCharCount > 1100 && ' (長め)'}
+                  </span>
+                </div>
                 {/* タグ */}
                 <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', background: theme.bgSecondary }}>
                   <Icons.Tag />
-                  {selectedIdea.tags.map(tag => (
+                  {(selectedIdea.tags || []).map(tag => (
                     <span key={tag} style={{ fontSize: '11px', padding: '4px 8px', background: theme.accent, color: '#fff', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       {tag}
                       <button onClick={() => removeTagFromIdea(selectedIdea.id, tag)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex' }}><Icons.X /></button>
@@ -2930,12 +3018,13 @@
                   ))}
                   <select value="" onChange={(e) => { if (e.target.value) addTagToIdea(selectedIdea.id, e.target.value); }} style={{ padding: '4px 8px', fontSize: '11px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, cursor: 'pointer' }}>
                     <option value="">+ タグ追加</option>
-                    {data.tags.filter(t => !selectedIdea.tags.includes(t)).map(t => <option key={t} value={t}>{t}</option>)}
+                    {data.tags.filter(t => !(selectedIdea.tags || []).includes(t)).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                <textarea value={selectedIdea.content} onChange={(e) => updateIdea(selectedIdea.id, 'content', e.target.value)} placeholder="ネタの詳細を入力...&#10;&#10;あらすじ、キャラ設定、シーンのイメージなど自由に書いてね" style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                <textarea value={selectedIdea.content || ''} onChange={(e) => updateIdea(selectedIdea.id, 'content', e.target.value)} placeholder="ネタの詳細を入力...&#10;&#10;あらすじ、キャラ設定、シーンのイメージなど自由に書いてね" style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
               </>
-            ) : (
+              );
+            })() : (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary }}>ネタを選択してね</div>
             )}
           </div>
