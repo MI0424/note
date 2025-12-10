@@ -56,7 +56,7 @@
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+    const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
 
     // ==================== アイコン ====================
     const Icons = {
@@ -2504,25 +2504,23 @@
       const [showAddHighlight, setShowAddHighlight] = useState(false);
       const [highlightColor, setHighlightColor] = useState('#FFEB3B');
       const textareaRef = useRef(null);
+      const [localContent, setLocalContent] = useState(pane.content || '');
+      const lastPaneIdRef = useRef(pane.id);
       
-      // スクロール位置を保存
-      const saveScrollPos = () => {
-        if (textareaRef.current && scrollPositions) {
-          scrollPositions.current[pane.id] = textareaRef.current.scrollTop;
-        }
-      };
-      
-      // スクロール位置を復元（マウント時とpane.id変更時）
+      // pane.idが変わったらlocalContentを更新
       useEffect(() => {
-        if (textareaRef.current && scrollPositions && scrollPositions.current[pane.id] !== undefined) {
-          // 少し遅延させて復元（DOMの更新を待つ）
-          setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.scrollTop = scrollPositions.current[pane.id];
-            }
-          }, 0);
+        if (pane.id !== lastPaneIdRef.current) {
+          setLocalContent(pane.content || '');
+          lastPaneIdRef.current = pane.id;
         }
-      }, [pane.id]);
+      }, [pane.id, pane.content]);
+      
+      // 外部からcontentが更新された場合のみ同期（自分がフォーカス中は無視）
+      useEffect(() => {
+        if (document.activeElement !== textareaRef.current && pane.content !== localContent) {
+          setLocalContent(pane.content || '');
+        }
+      }, [pane.content]);
 
       // ハイライトデータを取得・更新する関数
       const getHighlights = () => {
@@ -2605,24 +2603,17 @@
         }
       };
 
-      // スクロール位置を保持してonUpdate
+      // テキスト変更時（ローカルstate更新 + 親に通知）
       const handleTextChange = (e) => {
-        const scrollTop = textareaRef.current?.scrollTop || 0;
-        if (scrollPositions) {
-          scrollPositions.current[pane.id] = scrollTop;
-        }
+        setLocalContent(e.target.value);
         onUpdate(e.target.value);
-        requestAnimationFrame(() => {
-          if (textareaRef.current) {
-            textareaRef.current.scrollTop = scrollTop;
-          }
-        });
       };
 
       const handleReplace = () => {
         if (!searchText || !textareaRef.current) return;
         const content = textareaRef.current.value;
         const newContent = content.split(searchText).join(replaceText);
+        setLocalContent(newContent);
         onUpdate(newContent);
       };
 
@@ -2630,6 +2621,7 @@
         if (!searchText || !textareaRef.current) return;
         const content = textareaRef.current.value;
         const newContent = content.split(searchText).join(replaceText);
+        setLocalContent(newContent);
         onUpdate(newContent);
         const count = (content.match(new RegExp(searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
         alert(`${count}件を置換しました`);
@@ -2749,11 +2741,10 @@
               {/* テキストエリア */}
               <textarea 
                 ref={textareaRef} 
-                value={pane.content || ''} 
+                value={localContent} 
                 onChange={handleTextChange} 
                 onSelect={handleTextSelect}
                 onMouseUp={handleTextSelect}
-                onScroll={saveScrollPos}
                 placeholder="ここに執筆..." 
                 style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} 
               />
