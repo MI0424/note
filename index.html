@@ -1363,6 +1363,11 @@
 
       const ideas = creative.ideas || [];
       const stickies = creative.stickies || [];
+      
+      // 原稿進捗ステータス
+      const progressLabels = { not_started: '未着手', drafting: 'ドラフト中', draft_done: 'ドラフト完', writing: '原稿中', completed: '原稿完了' };
+      const progressColors = { not_started: '#9e9e9e', drafting: '#ff9800', draft_done: '#2196f3', writing: '#9c27b0', completed: '#4caf50' };
+      const progressIcons = { not_started: '○', drafting: '◐', draft_done: '◑', writing: '◕', completed: '●' };
 
       const countChars = (project) => project.items.filter(i => i.type === 'chapter').reduce((sum, i) => sum + (i.content || '').replace(/[\s\n]/g, '').length, 0);
       const totalChars = () => [...creative.inProgress, ...creative.completed, ...creative.onHold].reduce((sum, p) => sum + countChars(p), 0);
@@ -1387,8 +1392,16 @@
         setData({...data, creative: {...creative, [status]: creative[status].map(p => {
           if (p.id === projectId) {
             if (type === 'section') {
-              const sectionCount = p.items.filter(i => i.type === 'section').length;
-              return {...p, items: [...p.items, { id: `section-${Date.now()}`, type: 'section', name: `${sectionCount + 1}章`, expanded: true }]};
+              // 既存の章から「○章」パターンの最大番号を見つける
+              const chapterPattern = /^(\d+)章$/;
+              let maxNum = 0;
+              p.items.filter(i => i.type === 'section').forEach(s => {
+                const match = s.name.match(chapterPattern);
+                if (match) {
+                  maxNum = Math.max(maxNum, parseInt(match[1], 10));
+                }
+              });
+              return {...p, items: [...p.items, { id: `section-${Date.now()}`, type: 'section', name: `${maxNum + 1}章`, expanded: true }]};
             }
             // 話を追加する場合：章ごとにカウント
             if (type === 'chapter') {
@@ -1400,7 +1413,7 @@
                 // 章に属さない話数をカウント
                 count = p.items.filter(i => i.type === 'chapter' && !i.sectionId).length;
               }
-              const newItem = { id: `item-${Date.now()}`, type: 'chapter', name: `${count + 1}話`, content: '', sectionId };
+              const newItem = { id: `item-${Date.now()}`, type: 'chapter', name: `${count + 1}話`, content: '', sectionId, progress: 'not_started' };
               return {...p, items: [...p.items, newItem]};
             }
             // メモの場合
@@ -1531,6 +1544,12 @@
       const renameItem = (projectId, itemId, status, newName) => {
         setData({...data, creative: {...creative, [status]: creative[status].map(p => p.id === projectId ? {...p, items: p.items.map(i => i.id === itemId ? {...i, name: newName} : i)} : p)}});
         if (selectedItem?.id === itemId) setSelectedItem({...selectedItem, name: newName});
+      };
+
+      // 原稿の進捗を更新
+      const updateItemProgress = (projectId, itemId, status, newProgress) => {
+        setData({...data, creative: {...creative, [status]: creative[status].map(p => p.id === projectId ? {...p, items: p.items.map(i => i.id === itemId ? {...i, progress: newProgress} : i)} : p)}});
+        if (selectedItem?.id === itemId) setSelectedItem({...selectedItem, progress: newProgress});
       };
 
       const deleteItem = (projectId, itemId, status) => {
@@ -1899,7 +1918,21 @@
                         style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent' }}
                       >
                         <Icons.GripVertical />
-                        <Icons.FileText />
+                        <select 
+                          value={item.progress || 'not_started'} 
+                          onChange={(e) => { e.stopPropagation(); updateItemProgress(p.id, item.id, status, e.target.value); }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ 
+                            padding: '1px 2px', fontSize: '9px', borderRadius: '3px', border: 'none', cursor: 'pointer',
+                            background: progressColors[item.progress || 'not_started'], color: '#fff',
+                            width: '24px', textAlign: 'center', appearance: 'none', WebkitAppearance: 'none'
+                          }}
+                          title={progressLabels[item.progress || 'not_started']}
+                        >
+                          {Object.entries(progressIcons).map(([key, icon]) => (
+                            <option key={key} value={key}>{icon}</option>
+                          ))}
+                        </select>
                         {editingItemId === item.id ? (
                           <input type="text" value={item.name} onChange={(e) => renameItem(p.id, item.id, status, e.target.value)} onBlur={() => setEditingItemId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingItemId(null)} onClick={(e) => e.stopPropagation()} autoFocus style={{ flex: 1, background: theme.bg, border: `1px solid ${theme.accent}`, outline: 'none', color: theme.text, fontSize: '12px', padding: '2px 6px', borderRadius: '4px' }} />
                         ) : (
@@ -1971,7 +2004,21 @@
                                   style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent' }}
                                 >
                                   <Icons.GripVertical />
-                                  <Icons.FileText />
+                                  <select 
+                                    value={item.progress || 'not_started'} 
+                                    onChange={(e) => { e.stopPropagation(); updateItemProgress(p.id, item.id, status, e.target.value); }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ 
+                                      padding: '1px 2px', fontSize: '9px', borderRadius: '3px', border: 'none', cursor: 'pointer',
+                                      background: progressColors[item.progress || 'not_started'], color: '#fff',
+                                      width: '24px', textAlign: 'center', appearance: 'none', WebkitAppearance: 'none'
+                                    }}
+                                    title={progressLabels[item.progress || 'not_started']}
+                                  >
+                                    {Object.entries(progressIcons).map(([key, icon]) => (
+                                      <option key={key} value={key}>{icon}</option>
+                                    ))}
+                                  </select>
                                   {editingItemId === item.id ? (
                                     <input type="text" value={item.name} onChange={(e) => renameItem(p.id, item.id, status, e.target.value)} onBlur={() => setEditingItemId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingItemId(null)} onClick={(e) => e.stopPropagation()} autoFocus style={{ flex: 1, background: theme.bg, border: `1px solid ${theme.accent}`, outline: 'none', color: theme.text, fontSize: '12px', padding: '2px 6px', borderRadius: '4px' }} />
                                   ) : (
@@ -2445,7 +2492,7 @@
     };
 
     // ==================== 分割エディタ（ペイン用） ====================
-    const SplitEditor = ({ pane, onUpdate, theme, data, setData }) => {
+    const SplitEditor = React.memo(({ pane, onUpdate, theme, data, setData, scrollPositions }) => {
       const [showIdeaTagSelector, setShowIdeaTagSelector] = useState(false);
       const [showReplace, setShowReplace] = useState(false);
       const [searchText, setSearchText] = useState('');
@@ -2457,7 +2504,25 @@
       const [showAddHighlight, setShowAddHighlight] = useState(false);
       const [highlightColor, setHighlightColor] = useState('#FFEB3B');
       const textareaRef = useRef(null);
-      const scrollPosRef = useRef(0);
+      
+      // スクロール位置を保存
+      const saveScrollPos = () => {
+        if (textareaRef.current && scrollPositions) {
+          scrollPositions.current[pane.id] = textareaRef.current.scrollTop;
+        }
+      };
+      
+      // スクロール位置を復元（マウント時とpane.id変更時）
+      useEffect(() => {
+        if (textareaRef.current && scrollPositions && scrollPositions.current[pane.id] !== undefined) {
+          // 少し遅延させて復元（DOMの更新を待つ）
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.scrollTop = scrollPositions.current[pane.id];
+            }
+          }, 0);
+        }
+      }, [pane.id]);
 
       // ハイライトデータを取得・更新する関数
       const getHighlights = () => {
@@ -2542,13 +2607,14 @@
 
       // スクロール位置を保持してonUpdate
       const handleTextChange = (e) => {
-        if (textareaRef.current) {
-          scrollPosRef.current = textareaRef.current.scrollTop;
+        const scrollTop = textareaRef.current?.scrollTop || 0;
+        if (scrollPositions) {
+          scrollPositions.current[pane.id] = scrollTop;
         }
         onUpdate(e.target.value);
         requestAnimationFrame(() => {
           if (textareaRef.current) {
-            textareaRef.current.scrollTop = scrollPosRef.current;
+            textareaRef.current.scrollTop = scrollTop;
           }
         });
       };
@@ -2687,6 +2753,7 @@
                 onChange={handleTextChange} 
                 onSelect={handleTextSelect}
                 onMouseUp={handleTextSelect}
+                onScroll={saveScrollPos}
                 placeholder="ここに執筆..." 
                 style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} 
               />
@@ -2740,7 +2807,7 @@
           )}
         </div>
       );
-    };
+    });
 
     // ==================== エディタ ====================
     const Editor = ({ item, onUpdate, theme, data, setData }) => {
@@ -3413,6 +3480,7 @@
       const [resizingPane, setResizingPane] = useState(null); // リサイズ中のペインインデックス
       const [draggingPaneId, setDraggingPaneId] = useState(null); // ドラッグ中のペインID
       const [dragOverPaneId, setDragOverPaneId] = useState(null); // ドラッグオーバー中のペインID
+      const paneScrollPositions = useRef({}); // 各ペインのスクロール位置を保存
       const [sidebarWidth, setSidebarWidth] = useState(280);
       const [isResizing, setIsResizing] = useState(false);
       const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // サイドバー折りたたみ
@@ -4151,7 +4219,7 @@
                   isMobile ? (
                     // モバイル：1ペインのみ表示（最後に選択したもの）
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                      <SplitEditor pane={openPanes[openPanes.length - 1]} onUpdate={(content) => updateItemContent(openPanes[openPanes.length - 1].id, content, openPanes[openPanes.length - 1])} theme={theme} data={data} setData={setData} />
+                      <SplitEditor pane={openPanes[openPanes.length - 1]} onUpdate={(content) => updateItemContent(openPanes[openPanes.length - 1].id, content, openPanes[openPanes.length - 1])} theme={theme} data={data} setData={setData} scrollPositions={paneScrollPositions} />
                     </div>
                   ) : (
                     // PC：複数ペイン
@@ -4184,7 +4252,7 @@
                             draggable
                             onDragStart={(e) => handlePaneDragStart(e, pane.id)}
                             onDragEnd={handlePaneDragEnd}
-                            onClick={() => setActivePaneId(pane.id)}
+                            onClick={() => activePaneId !== pane.id && setActivePaneId(pane.id)}
                             style={{ 
                               padding: '8px 12px', 
                               background: dragOverPaneId === pane.id ? theme.highlight : theme.bgSecondary, 
@@ -4202,7 +4270,7 @@
                             </span>
                             <button onClick={(e) => { e.stopPropagation(); closePane(pane.id); }} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '2px', display: 'flex' }}><Icons.X /></button>
                           </div>
-                          <SplitEditor pane={pane} onUpdate={(content) => updateItemContent(pane.id, content, pane)} theme={theme} data={data} setData={setData} />
+                          <SplitEditor pane={pane} onUpdate={(content) => updateItemContent(pane.id, content, pane)} theme={theme} data={data} setData={setData} scrollPositions={paneScrollPositions} />
                         </div>
                       </React.Fragment>
                     ))
