@@ -2504,23 +2504,6 @@
       const [showAddHighlight, setShowAddHighlight] = useState(false);
       const [highlightColor, setHighlightColor] = useState('#FFEB3B');
       const textareaRef = useRef(null);
-      const [localContent, setLocalContent] = useState(pane.content || '');
-      const lastPaneIdRef = useRef(pane.id);
-      
-      // pane.idが変わったらlocalContentを更新
-      useEffect(() => {
-        if (pane.id !== lastPaneIdRef.current) {
-          setLocalContent(pane.content || '');
-          lastPaneIdRef.current = pane.id;
-        }
-      }, [pane.id, pane.content]);
-      
-      // 外部からcontentが更新された場合のみ同期（自分がフォーカス中は無視）
-      useEffect(() => {
-        if (document.activeElement !== textareaRef.current && pane.content !== localContent) {
-          setLocalContent(pane.content || '');
-        }
-      }, [pane.content]);
 
       // ハイライトデータを取得・更新する関数
       const getHighlights = () => {
@@ -2603,9 +2586,8 @@
         }
       };
 
-      // テキスト変更時（ローカルstate更新 + 親に通知）
+      // テキスト変更時（親に通知のみ）
       const handleTextChange = (e) => {
-        setLocalContent(e.target.value);
         onUpdate(e.target.value);
       };
 
@@ -2613,7 +2595,7 @@
         if (!searchText || !textareaRef.current) return;
         const content = textareaRef.current.value;
         const newContent = content.split(searchText).join(replaceText);
-        setLocalContent(newContent);
+        textareaRef.current.value = newContent;
         onUpdate(newContent);
       };
 
@@ -2621,7 +2603,7 @@
         if (!searchText || !textareaRef.current) return;
         const content = textareaRef.current.value;
         const newContent = content.split(searchText).join(replaceText);
-        setLocalContent(newContent);
+        textareaRef.current.value = newContent;
         onUpdate(newContent);
         const count = (content.match(new RegExp(searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
         alert(`${count}件を置換しました`);
@@ -2741,7 +2723,8 @@
               {/* テキストエリア */}
               <textarea 
                 ref={textareaRef} 
-                value={localContent} 
+                key={pane.id}
+                defaultValue={pane.content || ''} 
                 onChange={handleTextChange} 
                 onSelect={handleTextSelect}
                 onMouseUp={handleTextSelect}
@@ -2798,6 +2781,11 @@
           )}
         </div>
       );
+    }, (prevProps, nextProps) => {
+      // pane.idが同じで、かつcontentが同じなら再レンダリングしない
+      return prevProps.pane.id === nextProps.pane.id && 
+             prevProps.pane.content === nextProps.pane.content &&
+             prevProps.theme === nextProps.theme;
     });
 
     // ==================== エディタ ====================
