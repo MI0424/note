@@ -97,6 +97,45 @@
       Shield: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
     };
 
+    // ==================== 安定したTextareaコンポーネント ====================
+    // 親の再レンダリングに影響されない
+    const StableTextarea = React.memo(({ id, initialValue, onChange, onSelect, onMouseUp, placeholder, style }) => {
+      const ref = useRef(null);
+      
+      // 初期値を設定（一度だけ）
+      useEffect(() => {
+        if (ref.current && ref.current.value === '') {
+          ref.current.value = initialValue || '';
+        }
+      }, []);
+      
+      // idが変わったら値を更新
+      useEffect(() => {
+        if (ref.current) {
+          ref.current.value = initialValue || '';
+        }
+      }, [id]);
+      
+      const handleChange = useCallback((e) => {
+        onChange(e.target.value);
+      }, [onChange]);
+      
+      return (
+        <textarea
+          ref={ref}
+          defaultValue={initialValue}
+          onChange={handleChange}
+          onSelect={onSelect}
+          onMouseUp={onMouseUp}
+          placeholder={placeholder}
+          style={style}
+        />
+      );
+    }, (prev, next) => {
+      // idが同じなら再レンダリングしない
+      return prev.id === next.id;
+    });
+
     // ==================== 暗号化ユーティリティ ====================
     const CryptoUtils = {
       // パスワードから暗号化キーを生成
@@ -383,33 +422,203 @@
       const [sfxEnabled, setSfxEnabled] = useState(true);
       const [bgmVolume, setBgmVolume] = useState(0.3);
       const [sfxVolume, setSfxVolume] = useState(0.7);
-      const [selectedBgm, setSelectedBgm] = useState('rain');
+      const [workBgm, setWorkBgm] = useState('rain'); // 作業用BGM
+      const [breakBgm, setBreakBgm] = useState('houkagonoyuzora'); // 休憩用BGM
+      const [workBgmCategory, setWorkBgmCategory] = useState('all'); // 作業用カテゴリフィルター
+      const [breakBgmCategory, setBreakBgmCategory] = useState('all'); // 休憩用カテゴリフィルター
       
       // Audio refs
       const bgmRef = useRef(null);
-      const sfxRef = useRef(null);
+      const countdownRef = useRef(null);
+      const isFadingRef = useRef(false);
       
-      // 利用可能なBGM（GitHubにアップロードするファイル名）
-      const bgmOptions = [
-        { id: 'rain', name: '🌧️ 雨' },
-        { id: 'cafe', name: '☕ カフェ' },
-        { id: 'fire', name: '🔥 焚き火' },
-        { id: 'none', name: '🔇 なし' },
+      // BGMカテゴリ
+      const bgmCategories = [
+        { id: 'all', name: '🎵 すべて' },
+        { id: 'env', name: '🌿 環境音' },
+        { id: 'sad', name: '💧 切ない' },
+        { id: 'fantasy', name: '✨ ファンタジー' },
+        { id: 'dark', name: '🌙 ほの暗い' },
+        { id: 'dirty', name: '🎰 ダーティ' },
+        { id: 'horror', name: '👻 ホラー' },
+        { id: 'comic', name: '🎪 コミカル' },
       ];
       
-      // BGM再生/停止
-      useEffect(() => {
-        if (isRunning && bgmEnabled && selectedBgm !== 'none' && mode === 'work') {
-          if (!bgmRef.current) {
-            bgmRef.current = new Audio(`https://mi0424.github.io/note/sounds/${selectedBgm}.mp3`);
-            bgmRef.current.loop = true;
-          } else if (bgmRef.current.src !== `https://mi0424.github.io/note/sounds/${selectedBgm}.mp3`) {
-            bgmRef.current.pause();
-            bgmRef.current = new Audio(`https://mi0424.github.io/note/sounds/${selectedBgm}.mp3`);
-            bgmRef.current.loop = true;
+      // 利用可能なBGM
+      const bgmOptions = [
+        { id: 'none', name: '🔇 なし', category: 'all' },
+        // 環境音
+        { id: 'rain', name: '🌧️ 雨音', category: 'env' },
+        { id: 'water', name: '💧 水の中', category: 'env' },
+        { id: 'summermountain1', name: '⛰️ 夏の山１', category: 'env' },
+        { id: 'summermountain2', name: '⛰️ 夏の山２', category: 'env' },
+        { id: 'summer', name: '🌾 夏の田舎道', category: 'env' },
+        { id: 'summernight', name: '🌙 夏の田舎の夜', category: 'env' },
+        // 切ない
+        { id: 'painfulpiano', name: '🎹 切ないピアノ曲１', category: 'sad' },
+        { id: 'painfulpiano2', name: '🎹 切ないピアノ曲２', category: 'sad' },
+        { id: 'summermemory', name: '🌻 夏の思い出', category: 'sad' },
+        { id: 'Moment', name: '⏳ Moment', category: 'sad' },
+        { id: 'natsunokiri', name: '🌫️ 夏の霧', category: 'sad' },
+        { id: 'noel1', name: '🎄 ノエル', category: 'sad' },
+        { id: 'tsumetainamida', name: '❄️ 冷たい涙', category: 'sad' },
+        { id: 'houkagonoyuzora', name: '🌇 放課後の夕空', category: 'sad' },
+        { id: 'quietworld', name: '🤫 静寂の世界へ', category: 'sad' },
+        // ファンタジー
+        { id: 'basharoad', name: '🐴 馬車道', category: 'fantasy' },
+        { id: 'denshounooka', name: '🍀 伝承の丘', category: 'fantasy' },
+        { id: 'magiccity', name: '🏰 魔法都市の繁華街', category: 'fantasy' },
+        { id: 'sinarioofdestiny', name: '⚔️ 宿命のシナリオ', category: 'fantasy' },
+        { id: 'newworld', name: '🌅 新たな大地', category: 'fantasy' },
+        // ほの暗い
+        { id: 'frouts', name: '🍎 果物屋', category: 'dark' },
+        { id: 'myakudou', name: '💓 脈動', category: 'dark' },
+        { id: 'serious', name: '😐 シリアス', category: 'dark' },
+        { id: 'kobuneniyurerushallot', name: '🚣 小舟に揺れるシャルロット', category: 'dark' },
+        { id: 'andalusiawaltz', name: '💃 アンダルシア・ワルツ', category: 'dark' },
+        // ダーティ
+        { id: 'casino', name: '🎰 カジノ曲', category: 'dirty' },
+        { id: 'fishy', name: '🐟 怪しい曲', category: 'dirty' },
+        { id: 'jazztown', name: '🎷 ジャジーな町の曲', category: 'dirty' },
+        // ホラー
+        { id: 'izanauwarabeuta', name: '👧 イザナウワラベ', category: 'horror' },
+        { id: 'dethoflondon', name: '🇬🇧 ロンドンの死', category: 'horror' },
+        { id: 'coffeemaker', name: '☕ ブリキのコーヒーメーカー', category: 'horror' },
+        // コミカル
+        { id: 'dacing', name: '🌿 草原ダンスィング', category: 'comic' },
+        { id: 'youkinamafia', name: '🕺 陽気なマフィア', category: 'comic' },
+        { id: 'raribou', name: '😵 ラリ坊', category: 'comic' },
+      ];
+      
+      // フィルターされたBGMリスト（作業用）
+      const filteredWorkBgmOptions = workBgmCategory === 'all' 
+        ? bgmOptions 
+        : bgmOptions.filter(b => b.category === workBgmCategory || b.id === 'none');
+      
+      // フィルターされたBGMリスト（休憩用）
+      const filteredBreakBgmOptions = breakBgmCategory === 'all' 
+        ? bgmOptions 
+        : bgmOptions.filter(b => b.category === breakBgmCategory || b.id === 'none');
+      
+      // フェードアウト処理
+      const fadeOut = useCallback((audio, duration = 2000) => {
+        return new Promise((resolve) => {
+          if (!audio || audio.paused) { resolve(); return; }
+          const startVolume = audio.volume;
+          const steps = 20;
+          const stepTime = duration / steps;
+          const volumeStep = startVolume / steps;
+          let currentStep = 0;
+          
+          const fadeInterval = setInterval(() => {
+            currentStep++;
+            audio.volume = Math.max(0, startVolume - (volumeStep * currentStep));
+            if (currentStep >= steps) {
+              clearInterval(fadeInterval);
+              audio.pause();
+              audio.volume = startVolume;
+              resolve();
+            }
+          }, stepTime);
+        });
+      }, []);
+      
+      // フェードイン処理
+      const fadeIn = useCallback((audio, targetVolume, duration = 2000) => {
+        if (!audio) return;
+        audio.volume = 0;
+        audio.play().catch(() => {});
+        const steps = 20;
+        const stepTime = duration / steps;
+        const volumeStep = targetVolume / steps;
+        let currentStep = 0;
+        
+        const fadeInterval = setInterval(() => {
+          currentStep++;
+          audio.volume = Math.min(targetVolume, volumeStep * currentStep);
+          if (currentStep >= steps) {
+            clearInterval(fadeInterval);
           }
+        }, stepTime);
+      }, []);
+      
+      // BGM再生
+      const playBgm = useCallback((bgmId, fade = true) => {
+        if (!bgmEnabled || bgmId === 'none') {
+          if (bgmRef.current) bgmRef.current.pause();
+          return;
+        }
+        
+        const url = `https://mi0424.github.io/note/sounds/${bgmId}.mp3`;
+        if (bgmRef.current) {
+          bgmRef.current.pause();
+        }
+        bgmRef.current = new Audio(url);
+        bgmRef.current.loop = true;
+        if (fade) {
+          fadeIn(bgmRef.current, bgmVolume);
+        } else {
           bgmRef.current.volume = bgmVolume;
           bgmRef.current.play().catch(() => {});
+        }
+      }, [bgmEnabled, bgmVolume, fadeIn]);
+      
+      // 作業中にBGM変更した場合、即座に切り替え
+      const handleWorkBgmChange = (newBgm) => {
+        setWorkBgm(newBgm);
+        if (isRunning && mode === 'work') {
+          playBgm(newBgm, false);
+        }
+      };
+      
+      const handleBreakBgmChange = (newBgm) => {
+        setBreakBgm(newBgm);
+        if (isRunning && mode === 'break') {
+          playBgm(newBgm, false);
+        }
+      };
+      
+      // カウントダウン効果音再生
+      const playCountdown = useCallback(() => {
+        if (!sfxEnabled) return;
+        try {
+          countdownRef.current = new Audio('https://mi0424.github.io/note/sounds/countdown.mp3');
+          countdownRef.current.volume = sfxVolume;
+          countdownRef.current.play().catch(() => {});
+        } catch (e) {
+          console.log('Countdown SFX not available');
+        }
+      }, [sfxEnabled, sfxVolume]);
+      
+      // 3秒前の処理
+      useEffect(() => {
+        if (isRunning && timeLeft === 3 && !isFadingRef.current) {
+          isFadingRef.current = true;
+          // カウントダウン効果音を再生
+          playCountdown();
+          // BGMをフェードアウト
+          if (bgmRef.current) {
+            fadeOut(bgmRef.current, 2500);
+          }
+        }
+      }, [timeLeft, isRunning, playCountdown, fadeOut]);
+      
+      // モード切替時の処理
+      useEffect(() => {
+        if (isRunning) {
+          isFadingRef.current = false;
+          const currentBgm = mode === 'work' ? workBgm : breakBgm;
+          playBgm(currentBgm);
+        }
+      }, [mode, isRunning]);
+      
+      // 開始/停止時の処理
+      useEffect(() => {
+        if (isRunning && bgmEnabled) {
+          const currentBgm = mode === 'work' ? workBgm : breakBgm;
+          if (currentBgm !== 'none') {
+            playBgm(currentBgm);
+          }
         } else {
           if (bgmRef.current) {
             bgmRef.current.pause();
@@ -418,52 +627,48 @@
         return () => {
           if (bgmRef.current) bgmRef.current.pause();
         };
-      }, [isRunning, bgmEnabled, selectedBgm, bgmVolume, mode]);
+      }, [isRunning, bgmEnabled]);
       
-      // BGM音量変更
+      // 音量変更時
       useEffect(() => {
-        if (bgmRef.current) {
+        if (bgmRef.current && !isFadingRef.current) {
           bgmRef.current.volume = bgmVolume;
         }
       }, [bgmVolume]);
-      
-      // 効果音再生
-      const playSfx = useCallback((type) => {
-        if (!sfxEnabled) return;
-        try {
-          const sfx = new Audio(`https://mi0424.github.io/note/sounds/${type}.mp3`);
-          sfx.volume = sfxVolume;
-          sfx.play().catch(() => {});
-        } catch (e) {
-          console.log('SFX not available');
-        }
-      }, [sfxEnabled, sfxVolume]);
-      
-      // カウントダウン効果音（残り5秒から）
-      useEffect(() => {
-        if (isRunning && sfxEnabled && timeLeft <= 5 && timeLeft > 0) {
-          playSfx('countdown');
-        }
-      }, [timeLeft, isRunning, sfxEnabled, playSfx]);
 
+      // カウントダウン
       useEffect(() => {
         let interval;
         if (isRunning && timeLeft > 0) {
           interval = setInterval(() => setTimeLeft(t => t - 1), 1000);
         } else if (timeLeft === 0 && isRunning) {
-          if (mode === 'work') {
-            playSfx('work-end');
-            setTimeout(() => { setMode('break'); setTimeLeft(customBreak * 60); }, 2000);
-          } else {
-            playSfx('break-end');
-            setTimeout(() => { setMode('work'); setTimeLeft(customWork * 60); }, 2000);
-          }
+          // モード切替
+          setTimeout(() => {
+            isFadingRef.current = false;
+            if (mode === 'work') {
+              setMode('break');
+              setTimeLeft(customBreak * 60);
+            } else {
+              setMode('work');
+              setTimeLeft(customWork * 60);
+            }
+          }, 500);
         }
         return () => clearInterval(interval);
-      }, [isRunning, timeLeft, mode, customWork, customBreak, playSfx]);
+      }, [isRunning, timeLeft, mode, customWork, customBreak]);
 
       const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
       const progress = mode === 'work' ? (1 - timeLeft / (customWork * 60)) * 100 : (1 - timeLeft / (customBreak * 60)) * 100;
+
+      // リセット処理
+      const handleReset = () => {
+        setIsRunning(false);
+        setMode('work');
+        setTimeLeft(customWork * 60);
+        isFadingRef.current = false;
+        if (bgmRef.current) bgmRef.current.pause();
+        if (countdownRef.current) countdownRef.current.pause();
+      };
 
       // 最小化時
       if (isMinimized) {
@@ -490,7 +695,7 @@
           position: 'fixed', bottom: '80px', right: '20px', zIndex: 1001,
           background: theme.bgSecondary, borderRadius: '16px', padding: '16px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.3)', border: `1px solid ${theme.border}`,
-          width: showSettings ? '280px' : '200px'
+          width: showSettings ? '300px' : '200px', maxHeight: '80vh', overflow: 'auto'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span style={{ fontSize: '12px', color: theme.textSecondary }}>{mode === 'work' ? '🔥 作業中' : '☕ 休憩'}</span>
@@ -507,26 +712,92 @@
           
           {showSettings ? (
             <div style={{ marginBottom: '12px', padding: '12px', background: theme.bgTertiary, borderRadius: '8px' }}>
-              <div style={{ marginBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '11px', color: theme.textSecondary }}>🎵 BGM（作業中）</span>
-                  <button onClick={() => setBgmEnabled(!bgmEnabled)} style={{ padding: '2px 8px', fontSize: '10px', background: bgmEnabled ? theme.accent : theme.bgSecondary, color: bgmEnabled ? '#fff' : theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
-                    {bgmEnabled ? 'ON' : 'OFF'}
-                  </button>
+              {/* BGM ON/OFF */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <span style={{ fontSize: '11px', color: theme.textSecondary }}>🎵 BGM</span>
+                <button onClick={() => setBgmEnabled(!bgmEnabled)} style={{ padding: '2px 8px', fontSize: '10px', background: bgmEnabled ? theme.accent : theme.bgSecondary, color: bgmEnabled ? '#fff' : theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
+                  {bgmEnabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              
+              {/* 作業用BGM */}
+              <div style={{ marginBottom: '14px', padding: '10px', background: theme.bg, borderRadius: '6px', border: `1px solid ${theme.accent}40` }}>
+                <span style={{ fontSize: '10px', color: theme.accent, fontWeight: '600', display: 'block', marginBottom: '6px' }}>🔥 作業用BGM {isRunning && mode === 'work' && '(再生中)'}</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: '6px' }}>
+                  {bgmCategories.filter(c => c.id !== 'other').map(cat => (
+                    <button 
+                      key={cat.id} 
+                      onClick={() => setWorkBgmCategory(cat.id)}
+                      style={{ 
+                        padding: '2px 6px', 
+                        fontSize: '8px', 
+                        background: workBgmCategory === cat.id ? theme.accent : 'transparent', 
+                        color: workBgmCategory === cat.id ? '#fff' : theme.textSecondary, 
+                        border: `1px solid ${workBgmCategory === cat.id ? theme.accent : theme.border}`, 
+                        borderRadius: '3px', 
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
                 </div>
-                <select value={selectedBgm} onChange={(e) => setSelectedBgm(e.target.value)} disabled={!bgmEnabled} style={{ width: '100%', padding: '6px', fontSize: '11px', background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text, marginBottom: '6px' }}>
-                  {bgmOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+                <select 
+                  value={workBgm} 
+                  onChange={(e) => handleWorkBgmChange(e.target.value)} 
+                  disabled={!bgmEnabled} 
+                  style={{ width: '100%', padding: '6px', fontSize: '11px', background: theme.bgSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text }}
+                >
+                  {filteredWorkBgmOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
                 </select>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              </div>
+              
+              {/* 休憩用BGM */}
+              <div style={{ marginBottom: '12px', padding: '10px', background: theme.bg, borderRadius: '6px', border: `1px solid ${theme.success}40` }}>
+                <span style={{ fontSize: '10px', color: theme.success, fontWeight: '600', display: 'block', marginBottom: '6px' }}>☕ 休憩用BGM {isRunning && mode === 'break' && '(再生中)'}</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: '6px' }}>
+                  {bgmCategories.filter(c => c.id !== 'other').map(cat => (
+                    <button 
+                      key={cat.id} 
+                      onClick={() => setBreakBgmCategory(cat.id)}
+                      style={{ 
+                        padding: '2px 6px', 
+                        fontSize: '8px', 
+                        background: breakBgmCategory === cat.id ? theme.success : 'transparent', 
+                        color: breakBgmCategory === cat.id ? '#fff' : theme.textSecondary, 
+                        border: `1px solid ${breakBgmCategory === cat.id ? theme.success : theme.border}`, 
+                        borderRadius: '3px', 
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+                <select 
+                  value={breakBgm} 
+                  onChange={(e) => handleBreakBgmChange(e.target.value)} 
+                  disabled={!bgmEnabled} 
+                  style={{ width: '100%', padding: '6px', fontSize: '11px', background: theme.bgSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', color: theme.text }}
+                >
+                  {filteredBreakBgmOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+                </select>
+              </div>
+              
+              {/* 音量 */}
+              <div style={{ marginBottom: '10px' }}>
+                <span style={{ fontSize: '10px', color: theme.textSecondary }}>🎵 BGM音量</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                   <span style={{ fontSize: '10px', color: theme.textSecondary }}>🔈</span>
                   <input type="range" min="0" max="1" step="0.1" value={bgmVolume} onChange={(e) => setBgmVolume(Number(e.target.value))} disabled={!bgmEnabled} style={{ flex: 1 }} />
                   <span style={{ fontSize: '10px', color: theme.textSecondary }}>🔊</span>
                 </div>
               </div>
               
+              {/* 効果音 */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '11px', color: theme.textSecondary }}>🔔 効果音</span>
+                  <span style={{ fontSize: '10px', color: theme.textSecondary }}>🔔 カウントダウン効果音</span>
                   <button onClick={() => setSfxEnabled(!sfxEnabled)} style={{ padding: '2px 8px', fontSize: '10px', background: sfxEnabled ? theme.accent : theme.bgSecondary, color: sfxEnabled ? '#fff' : theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
                     {sfxEnabled ? 'ON' : 'OFF'}
                   </button>
@@ -556,7 +827,7 @@
             <button onClick={() => setIsRunning(!isRunning)} style={{ padding: '8px 16px', background: isRunning ? theme.warning : theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
               {isRunning ? <Icons.Pause /> : <Icons.Play />}
             </button>
-            <button onClick={() => { setIsRunning(false); setMode('work'); setTimeLeft(customWork * 60); if (bgmRef.current) bgmRef.current.pause(); }} style={{ padding: '8px 10px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '6px', cursor: 'pointer' }}>
+            <button onClick={handleReset} style={{ padding: '8px 10px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '6px', cursor: 'pointer' }}>
               <Icons.RotateCcw />
             </button>
           </div>
@@ -570,7 +841,9 @@
           
           {/* 現在の音声状態表示 */}
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '8px', fontSize: '10px', color: theme.textSecondary }}>
-            {bgmEnabled && selectedBgm !== 'none' && mode === 'work' && isRunning && <span>🎵 {bgmOptions.find(b => b.id === selectedBgm)?.name}</span>}
+            {bgmEnabled && isRunning && (
+              <span>🎵 {bgmOptions.find(b => b.id === (mode === 'work' ? workBgm : breakBgm))?.name}</span>
+            )}
             {sfxEnabled && <span>🔔</span>}
             {!bgmEnabled && !sfxEnabled && <span>🔇 ミュート</span>}
           </div>
@@ -661,31 +934,62 @@
     };
 
     const WeeklyChartWidget = ({ progress, progressAdjustments = {}, theme }) => {
+      const [period, setPeriod] = useState(7); // 7, 14, 30, 90日
+      const [offset, setOffset] = useState(0); // 過去にスクロールするオフセット
+      
       const days = [];
-      for (let i = 6; i >= 0; i--) {
+      const startOffset = offset * period;
+      for (let i = period - 1 + startOffset; i >= startOffset; i--) {
         const date = new Date(); date.setDate(date.getDate() - i);
-        // ローカル時間で日付キーを生成
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         const rawValue = progress[key] || 0;
         const adjustment = progressAdjustments[key] || 0;
-        days.push({ label: ['日','月','火','水','木','金','土'][date.getDay()], value: Math.max(0, rawValue + adjustment), isToday: i === 0 });
+        const dayOfWeek = ['日','月','火','水','木','金','土'][date.getDay()];
+        const label = period <= 14 ? dayOfWeek : `${date.getMonth()+1}/${date.getDate()}`;
+        days.push({ label, value: Math.max(0, rawValue + adjustment), isToday: i === 0, date: key });
       }
       const maxValue = Math.max(...days.map(d => d.value), 1000);
-      const maxBarHeight = 80; // バーの最大高さ（ピクセル）
+      const maxBarHeight = 80;
+      const totalChars = days.reduce((sum, d) => sum + d.value, 0);
+      
+      // 期間のラベル
+      const getPeriodLabel = () => {
+        if (offset === 0) return '現在';
+        const endDate = new Date(); endDate.setDate(endDate.getDate() - offset * period);
+        const startDate = new Date(); startDate.setDate(startDate.getDate() - (offset + 1) * period + 1);
+        return `${startDate.getMonth()+1}/${startDate.getDate()}〜${endDate.getMonth()+1}/${endDate.getDate()}`;
+      };
       
       return (
-        <div style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontSize: '12px', color: theme.textSecondary, marginBottom: '12px' }}>📊 週間執筆量</div>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+        <div style={{ padding: '12px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {/* ヘッダー */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {[7, 14, 30, 90].map(p => (
+                <button key={p} onClick={() => { setPeriod(p); setOffset(0); }} style={{ padding: '2px 6px', fontSize: '9px', background: period === p ? theme.accent : theme.bgTertiary, color: period === p ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                  {p === 7 ? '1週' : p === 14 ? '2週' : p === 30 ? '1ヶ月' : '3ヶ月'}
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: '10px', color: theme.accent, fontWeight: '600' }}>計 {totalChars.toLocaleString()}字</span>
+          </div>
+          {/* ナビゲーション */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <button onClick={() => setOffset(o => o + 1)} style={{ padding: '2px 8px', fontSize: '10px', background: theme.bgTertiary, border: 'none', borderRadius: '4px', cursor: 'pointer', color: theme.textSecondary }}>◀ 前</button>
+            <span style={{ fontSize: '10px', color: theme.textSecondary }}>{getPeriodLabel()}</span>
+            <button onClick={() => setOffset(o => Math.max(0, o - 1))} disabled={offset === 0} style={{ padding: '2px 8px', fontSize: '10px', background: offset === 0 ? theme.bgTertiary : theme.bgTertiary, border: 'none', borderRadius: '4px', cursor: offset === 0 ? 'not-allowed' : 'pointer', color: theme.textSecondary, opacity: offset === 0 ? 0.5 : 1 }}>次 ▶</button>
+          </div>
+          {/* グラフ */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: period <= 14 ? '4px' : '2px', overflow: 'hidden' }}>
             {days.map((d, i) => {
-              const barHeight = Math.max((d.value / maxValue) * maxBarHeight, 4);
+              const barHeight = Math.max((d.value / maxValue) * maxBarHeight, d.value > 0 ? 4 : 2);
               return (
-                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ fontSize: '9px', color: d.isToday ? theme.accent : theme.textSecondary, fontWeight: d.value > 0 ? '500' : '400', minHeight: '14px' }}>
-                    {d.value > 0 ? d.value.toLocaleString() : ''}
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: 0 }}>
+                  <span style={{ fontSize: '8px', color: d.isToday ? theme.accent : theme.textSecondary, fontWeight: d.value > 0 ? '500' : '400', minHeight: '12px', overflow: 'hidden' }}>
+                    {d.value > 0 ? (d.value >= 1000 ? `${(d.value/1000).toFixed(1)}k` : d.value) : ''}
                   </span>
-                  <div style={{ width: '100%', height: `${barHeight}px`, background: d.isToday ? theme.accent : theme.accentLight, borderRadius: '4px 4px 0 0' }} />
-                  <span style={{ fontSize: '11px', color: d.isToday ? theme.accent : theme.textSecondary, fontWeight: d.isToday ? '600' : '400' }}>{d.label}</span>
+                  <div style={{ width: '100%', height: `${barHeight}px`, background: d.isToday ? theme.accent : d.value > 0 ? theme.accentLight : theme.bgTertiary, borderRadius: '2px 2px 0 0' }} title={`${d.date}: ${d.value.toLocaleString()}字`} />
+                  <span style={{ fontSize: period <= 14 ? '9px' : '7px', color: d.isToday ? theme.accent : theme.textSecondary, fontWeight: d.isToday ? '600' : '400', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.label}</span>
                 </div>
               );
             })}
@@ -2531,6 +2835,32 @@
 
       const highlights = getHighlights();
 
+      // 話全体のメモを取得・更新する関数
+      const getItemNote = () => {
+        if (!pane.projectId || !pane.status) return '';
+        const project = data.creative[pane.status]?.find(p => p.id === pane.projectId);
+        const item = project?.items?.find(i => i.id === pane.id);
+        return item?.note || '';
+      };
+
+      const setItemNote = (note) => {
+        if (!pane.projectId || !pane.status) return;
+        const updatedProjects = data.creative[pane.status].map(p => {
+          if (p.id === pane.projectId) {
+            return {
+              ...p,
+              items: p.items.map(item => 
+                item.id === pane.id ? { ...item, note } : item
+              )
+            };
+          }
+          return p;
+        });
+        setData({ ...data, creative: { ...data.creative, [pane.status]: updatedProjects } });
+      };
+
+      const itemNote = getItemNote();
+
       // テキスト選択時の処理
       const handleTextSelect = () => {
         if (!textareaRef.current) return;
@@ -2671,7 +3001,7 @@
                   <button onClick={() => setShowAddHighlight(true)} style={{ padding: '2px 8px', fontSize: '10px', background: '#FFEB3B', color: '#333', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>📌 選択部分に付箋</button>
                 )}
                 <button onClick={() => setShowHighlights(!showHighlights)} style={{ padding: '2px 8px', fontSize: '10px', background: showHighlights ? theme.accent : theme.bgTertiary, color: showHighlights ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
-                  📌 付箋 ({highlights.length})
+                  📝 メモ {highlights.length > 0 || itemNote ? `(${highlights.length}${itemNote ? '+1' : ''})` : ''}
                 </button>
                 <button onClick={() => setShowReplace(!showReplace)} style={{ padding: '2px 8px', fontSize: '10px', background: showReplace ? theme.accent : theme.bgTertiary, color: showReplace ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }}>🔍 置換</button>
               </div>
@@ -2734,12 +3064,38 @@
               {/* ハイライト付箋パネル */}
               {showHighlights && pane.type === 'chapter' && (
                 <div style={{ width: '220px', borderLeft: `1px solid ${theme.border}`, background: theme.bgSecondary, overflow: 'auto', flexShrink: 0 }}>
+                  {/* 話全体のメモ */}
+                  <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: '11px', fontWeight: '600', color: theme.textSecondary }}>
+                    📝 この話のメモ
+                  </div>
+                  <div style={{ padding: '8px' }}>
+                    <textarea 
+                      defaultValue={itemNote}
+                      onChange={(e) => setItemNote(e.target.value)}
+                      placeholder="この話全体に関するメモ..."
+                      style={{ 
+                        width: '100%', 
+                        minHeight: '60px', 
+                        padding: '8px', 
+                        background: theme.bgTertiary, 
+                        border: `1px solid ${theme.border}`, 
+                        borderRadius: '6px', 
+                        fontSize: '11px', 
+                        color: theme.text, 
+                        resize: 'vertical', 
+                        outline: 'none',
+                        fontFamily: '"Noto Serif JP", serif',
+                        lineHeight: '1.6'
+                      }}
+                    />
+                  </div>
+                  {/* ハイライト付箋 */}
                   <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: '11px', fontWeight: '600', color: theme.textSecondary }}>
                     📌 ハイライト付箋
                   </div>
                   <div style={{ padding: '8px' }}>
                     {highlights.length === 0 ? (
-                      <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '11px', color: theme.textSecondary }}>
+                      <div style={{ padding: '12px', textAlign: 'center', fontSize: '10px', color: theme.textSecondary }}>
                         テキストを選択して<br/>「📌 選択部分に付箋」で追加
                       </div>
                     ) : (
@@ -2782,10 +3138,8 @@
         </div>
       );
     }, (prevProps, nextProps) => {
-      // pane.idが同じで、かつcontentが同じなら再レンダリングしない
-      return prevProps.pane.id === nextProps.pane.id && 
-             prevProps.pane.content === nextProps.pane.content &&
-             prevProps.theme === nextProps.theme;
+      // pane.idが同じなら絶対に再レンダリングしない
+      return prevProps.pane.id === nextProps.pane.id;
     });
 
     // ==================== エディタ ====================
@@ -3414,6 +3768,36 @@
               }} style={{ padding: '10px 20px', background: theme.success, color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Icons.Download /> 作品一括DL(TXT)
               </button>
+              <button onClick={() => {
+                // 執筆データをCSVでダウンロード
+                const progress = data.progress || {};
+                const adjustments = data.progressAdjustments || {};
+                // 日付でソート
+                const dates = Object.keys(progress).sort();
+                if (dates.length === 0) {
+                  alert('執筆データがありません');
+                  return;
+                }
+                // CSV作成
+                let csv = '日付,執筆文字数,調整値,合計\n';
+                dates.forEach(date => {
+                  const raw = progress[date] || 0;
+                  const adj = adjustments[date] || 0;
+                  const total = Math.max(0, raw + adj);
+                  csv += `${date},${raw},${adj},${total}\n`;
+                });
+                // BOM付きUTF-8で出力（Excelで文字化けしない）
+                const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+                const blob = new Blob([bom, csv], { type: 'text/csv; charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `執筆記録_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }} style={{ padding: '10px 20px', background: '#9c27b0', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Icons.Download /> 執筆記録DL(CSV)
+              </button>
               <label style={{ padding: '10px 20px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '8px', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Icons.Upload /> インポート
                 <input type="file" accept=".json" onChange={(e) => {
@@ -3942,7 +4326,8 @@
           return newData;
         });
         
-        updatePaneContent(itemId, content);
+        // openPanesの更新は不要（defaultValueを使っているのでDOM側で管理）
+        // updatePaneContent(itemId, content);
       };
 
       // モバイル判定
@@ -4249,7 +4634,7 @@
                             </span>
                             <button onClick={(e) => { e.stopPropagation(); closePane(pane.id); }} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '2px', display: 'flex' }}><Icons.X /></button>
                           </div>
-                          <SplitEditor pane={pane} onUpdate={(content) => updateItemContent(pane.id, content, pane)} theme={theme} data={data} setData={setData} scrollPositions={paneScrollPositions} />
+                          <SplitEditor key={pane.id} pane={pane} onUpdate={(content) => updateItemContent(pane.id, content, pane)} theme={theme} data={data} setData={setData} scrollPositions={paneScrollPositions} />
                         </div>
                       </React.Fragment>
                     ))
