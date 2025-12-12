@@ -3138,8 +3138,9 @@
         </div>
       );
     }, (prevProps, nextProps) => {
-      // pane.idが同じなら絶対に再レンダリングしない
-      return prevProps.pane.id === nextProps.pane.id;
+      // pane.idとcontentが同じなら再レンダリングしない
+      return prevProps.pane.id === nextProps.pane.id && 
+             prevProps.pane.content === nextProps.pane.content;
     });
 
     // ==================== エディタ ====================
@@ -4300,9 +4301,9 @@
           if (paneItem.type === 'chapter' && !paneItem.isIdea && !paneItem.isHoldItem) {
             const now = new Date();
             const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-            const currentPane = openPanes.find(p => p.id === itemId);
-            const prevContent = currentPane ? currentPane.content : paneItem.content;
-            const prevCount = (prevContent || '').replace(/[\s\n]/g, '').length;
+            // paneItemは引数で渡された更新前の値を使う（クロージャ問題を回避）
+            const prevContent = paneItem.content || '';
+            const prevCount = prevContent.replace(/[\s\n]/g, '').length;
             const newCount = content.replace(/[\s\n]/g, '').length;
             const diff = newCount - prevCount;
             if (diff !== 0) {
@@ -4326,8 +4327,8 @@
           return newData;
         });
         
-        // openPanesの更新は不要（defaultValueを使っているのでDOM側で管理）
-        // updatePaneContent(itemId, content);
+        // openPanesも更新する（React.memoがcontentを比較するため必要）
+        updatePaneContent(itemId, content);
       };
 
       // モバイル判定
