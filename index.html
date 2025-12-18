@@ -1231,6 +1231,17 @@
         rebuildContent(newSections);
       };
 
+      const addChildSection = (parentId) => {
+        const idx = sections.findIndex(s => s.id === parentId);
+        const parentLevel = sections[idx].level;
+        // 最大3階層まで
+        if (parentLevel >= 3) return;
+        const newSection = { id: `section-new-${Date.now()}`, level: parentLevel + 1, title: '新しいセクション', content: '' };
+        const newSections = [...sections];
+        newSections.splice(idx + 1, 0, newSection);
+        rebuildContent(newSections);
+      };
+
       const addSection = (level) => {
         const newSection = { id: `section-new-${Date.now()}`, level, title: '新しいセクション', content: '' };
         rebuildContent([...sections, newSection]);
@@ -1375,6 +1386,9 @@
                           {contentCollapsed[s.id] ? '📝' : '📄'}
                         </button>
                         <button onClick={() => addSectionAfter(s.id, s.level)} style={{ padding: '2px 6px', fontSize: '10px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }} title="下に同レベルを追加">+</button>
+                        {s.level < 3 && (
+                          <button onClick={() => addChildSection(s.id)} style={{ padding: '2px 6px', fontSize: '10px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }} title="下の階層に追加">↳</button>
+                        )}
                         <button onClick={() => deleteSection(s.id)} style={{ padding: '2px 6px', fontSize: '10px', background: 'transparent', color: theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer', opacity: 0.6 }} title="削除"><Icons.Trash /></button>
                       </div>
                     </div>
@@ -1705,7 +1719,7 @@
     };
 
     // ==================== 創作セクション（タグフィルター & ネタ帳統合） ====================
-    const CreativeSection = ({ data, setData, selectedItem, setSelectedItem, openInNewPane, theme, sidebarWidth }) => {
+    const CreativeSection = ({ data, setData, selectedItem, setSelectedItem, openInNewPane, theme, sidebarWidth, activeTab, setActiveTab }) => {
       const { creative } = data;
       const [editingItemId, setEditingItemId] = useState(null);
       const [editingProjectId, setEditingProjectId] = useState(null);
@@ -1713,16 +1727,29 @@
       const [dragOverStatus, setDragOverStatus] = useState(null);
       const [collapsedSections, setCollapsedSections] = useState(data.collapsedSections || { completed: true, onHold: true });
       const [showTagSelector, setShowTagSelector] = useState(null);
-      const [activeTab, setActiveTab] = useState('works'); // 'works' | 'ideas' | 'stickies'
       const [tagFilter, setTagFilter] = useState('all');
       const [editingIdeaId, setEditingIdeaId] = useState(null);
       const [stickyColorFilter, setStickyColorFilter] = useState('all');
       const [collapsedStickies, setCollapsedStickies] = useState({});
       const [projectStickyFilter, setProjectStickyFilter] = useState({}); // 作品別付箋の色フィルター
       const [ideaStatusFilter, setIdeaStatusFilter] = useState('all'); // ネタのステータスフィルター
+      
+      // チェックボックス一括削除用
+      const [checkboxMode, setCheckboxMode] = useState(false);
+      const [selectedStickies, setSelectedStickies] = useState([]);
+      const [selectedIdeas, setSelectedIdeas] = useState([]);
+      const [selectedItems, setSelectedItems] = useState({}); // 作品別: { projectId: [itemIds] }
 
       const ideas = creative.ideas || [];
       const stickies = creative.stickies || [];
+      
+      // textareaの高さ自動調整
+      const autoResize = (textarea) => {
+        if (textarea) {
+          textarea.style.height = 'auto';
+          textarea.style.height = Math.max(60, textarea.scrollHeight) + 'px';
+        }
+      };
       
       // 原稿進捗ステータス（シーン連動）
       const progressLabels = { none: '', draft_done: 'ドラフト完', completed: '原稿完了' };
@@ -2190,6 +2217,36 @@
                     <span onDoubleClick={() => setEditingProjectId(p.id)} style={{ flex: 1, fontSize: '13px', fontWeight: '500', cursor: 'default' }}>{p.name}</span>
                   )}
                   <span style={{ fontSize: '11px', color: theme.accent }}>{countChars(p).toLocaleString()}字</span>
+                  {checkboxMode && selectedItems[p.id]?.length > 0 && (
+                    <button onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`${selectedItems[p.id].length}個の話を削除しますか？`)) {
+                        setData({
+                          ...data,
+                          creative: {
+                            ...creative,
+                            [status]: creative[status].map(proj =>
+                              proj.id === p.id
+                                ? { ...proj, items: proj.items.filter(i => !selectedItems[p.id].includes(i.id)) }
+                                : proj
+                            )
+                          }
+                        });
+                        setSelectedItems(prev => ({ ...prev, [p.id]: [] }));
+                      }
+                    }} style={{ padding: '2px 8px', fontSize: '9px', background: theme.error, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                      🗑️ 削除 ({selectedItems[p.id].length})
+                    </button>
+                  )}
+                  <button onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setCheckboxMode(!checkboxMode);
+                    if (checkboxMode) {
+                      setSelectedItems(prev => ({ ...prev, [p.id]: [] }));
+                    }
+                  }} style={{ background: 'none', border: 'none', color: checkboxMode ? theme.accent : theme.textSecondary, cursor: 'pointer', padding: '2px', opacity: 0.8 }} title={checkboxMode ? "選択モード終了" : "話を選択"}>
+                    {checkboxMode ? '✓' : '☑️'}
+                  </button>
                   <button onClick={(e) => { e.stopPropagation(); downloadProjectAsTxt(p); }} style={{ background: 'none', border: 'none', color: theme.success, cursor: 'pointer', padding: '2px', opacity: 0.6 }} title="TXTダウンロード"><Icons.Download /></button>
                   <button onClick={(e) => { e.stopPropagation(); deleteProject(p.id, status); }} style={{ background: 'none', border: 'none', color: theme.error, cursor: 'pointer', padding: '2px', opacity: 0.5 }} title="作品を削除"><Icons.Trash /></button>
                 </div>
@@ -2266,18 +2323,35 @@
                       </div>
                     )}
                     {/* 章に属さない話 */}
-                    {p.items.filter(i => i.type === 'chapter' && !i.sectionId).map((item, idx) => (
+                    {p.items.filter(i => i.type === 'chapter' && !i.sectionId).map((item, idx) => {
+                      const isSelected = selectedItems[p.id]?.includes(item.id);
+                      return (
                       <div 
                         key={item.id} 
-                        draggable
+                        draggable={!checkboxMode}
                         onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('itemType', 'chapter'); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
                         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = `2px solid ${theme.accent}`; }}
                         onDragLeave={(e) => { e.currentTarget.style.borderTop = 'none'; }}
                         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = 'none'; const draggedId = e.dataTransfer.getData('itemId'); if (draggedId && draggedId !== item.id) reorderItems(p.id, status, draggedId, item.id, 'before'); }}
-                        onClick={() => openInNewPane({...item, projectId: p.id, status})} 
-                        style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent' }}
+                        onClick={() => !checkboxMode && openInNewPane({...item, projectId: p.id, status})} 
+                        style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: checkboxMode ? 'pointer' : 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent', border: isSelected ? `2px solid ${theme.accent}` : 'none', position: 'relative' }}
                       >
-                        <Icons.GripVertical />
+                        {checkboxMode && (
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              const newSelected = isSelected
+                                ? (selectedItems[p.id] || []).filter(id => id !== item.id)
+                                : [...(selectedItems[p.id] || []), item.id];
+                              setSelectedItems(prev => ({ ...prev, [p.id]: newSelected }));
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer', marginRight: '4px' }}
+                          />
+                        )}
+                        {!checkboxMode && <Icons.GripVertical />}
                         <select 
                           value={item.progress || 'none'} 
                           onChange={(e) => { e.stopPropagation(); updateItemProgress(p.id, item.id, status, e.target.value); }}
@@ -2319,7 +2393,8 @@
                         <button onClick={(e) => { e.stopPropagation(); moveItemToHold(p.id, item, status); }} style={{ background: 'none', border: 'none', color: theme.warning, cursor: 'pointer', padding: '2px', opacity: 0.6 }} title="保留に移動"><Icons.Pause /></button>
                         <button onClick={(e) => { e.stopPropagation(); deleteItem(p.id, item.id, status); }} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '2px', opacity: 0.5 }}><Icons.Trash /></button>
                       </div>
-                    ))}
+                    );
+                    })}
                     
                     {/* 章とその中の話 */}
                     {p.items.filter(i => i.type === 'section').map((section, sectionIdx) => {
@@ -2368,18 +2443,35 @@
                               onDragOver={(e) => { e.preventDefault(); }}
                               onDrop={(e) => { e.preventDefault(); const draggedId = e.dataTransfer.getData('itemId'); const draggedItem = p.items.find(i => i.id === draggedId); if (draggedItem && draggedItem.type === 'chapter') moveItemToSection(p.id, draggedId, section.id, status); }}
                             >
-                              {sectionChapters.map(item => (
+                              {sectionChapters.map(item => {
+                                const isSelected = selectedItems[p.id]?.includes(item.id);
+                                return (
                                 <div 
                                   key={item.id} 
-                                  draggable
+                                  draggable={!checkboxMode}
                                   onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('itemType', 'chapter'); e.dataTransfer.setData('projectId', p.id); e.dataTransfer.setData('status', status); }}
                                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = `2px solid ${theme.accent}`; }}
                                   onDragLeave={(e) => { e.currentTarget.style.borderTop = 'none'; }}
                                   onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = 'none'; const draggedId = e.dataTransfer.getData('itemId'); if (draggedId && draggedId !== item.id) reorderItems(p.id, status, draggedId, item.id, 'before'); }}
-                                  onClick={() => openInNewPane({...item, projectId: p.id, status})} 
-                                  style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent' }}
+                                  onClick={() => !checkboxMode && openInNewPane({...item, projectId: p.id, status})} 
+                                  style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: checkboxMode ? 'pointer' : 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent', border: isSelected ? `2px solid ${theme.accent}` : 'none', position: 'relative' }}
                                 >
-                                  <Icons.GripVertical />
+                                  {checkboxMode && (
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        const newSelected = isSelected
+                                          ? (selectedItems[p.id] || []).filter(id => id !== item.id)
+                                          : [...(selectedItems[p.id] || []), item.id];
+                                        setSelectedItems(prev => ({ ...prev, [p.id]: newSelected }));
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '16px', height: '16px', cursor: 'pointer', marginRight: '4px' }}
+                                    />
+                                  )}
+                                  {!checkboxMode && <Icons.GripVertical />}
                                   <select 
                                     value={item.progress || 'none'} 
                                     onChange={(e) => { e.stopPropagation(); updateItemProgress(p.id, item.id, status, e.target.value); }}
@@ -2421,7 +2513,8 @@
                                   <button onClick={(e) => { e.stopPropagation(); moveItemToHold(p.id, item, status); }} style={{ background: 'none', border: 'none', color: theme.warning, cursor: 'pointer', padding: '2px', opacity: 0.6 }} title="保留に移動"><Icons.Pause /></button>
                                   <button onClick={(e) => { e.stopPropagation(); deleteItem(p.id, item.id, status); }} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '2px', opacity: 0.5 }}><Icons.Trash /></button>
                                 </div>
-                              ))}
+                              );
+                              })}
                               {sectionChapters.length === 0 && (
                                 <div style={{ padding: '8px 16px', fontSize: '10px', color: theme.textSecondary, opacity: 0.7 }}>話をドラッグしてここに追加</div>
                               )}
@@ -2549,9 +2642,11 @@
                                           : proj
                                       );
                                       setData({ ...data, creative: { ...creative, [status]: updatedProjects } });
+                                      autoResize(e.target);
                                     }}
+                                    ref={(el) => el && autoResize(el)}
                                     placeholder="メモ..."
-                                    style={{ width: '100%', minHeight: '40px', background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '4px', padding: '6px', fontSize: '11px', lineHeight: '1.5', color: '#333', resize: 'none', outline: 'none' }}
+                                    style={{ width: '100%', minHeight: '40px', background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '4px', padding: '6px', fontSize: '11px', lineHeight: '1.5', color: '#333', resize: 'none', outline: 'none', overflow: 'hidden' }}
                                   />
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                                     <div style={{ display: 'flex', gap: '2px' }}>
@@ -2699,9 +2794,32 @@
 
           {activeTab === 'ideas' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <div style={{ padding: '8px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '8px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
                 <span style={{ fontSize: '10px', color: theme.textSecondary }}>クリックで編集</span>
-                <button onClick={addIdea} style={{ padding: '4px 10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                  {!checkboxMode ? (
+                    <>
+                      <button onClick={() => setCheckboxMode(true)} style={{ padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '9px' }}>
+                        ☑️ 選択
+                      </button>
+                      <button onClick={addIdea} style={{ padding: '4px 10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => {
+                        if (selectedIdeas.length > 0 && confirm(`${selectedIdeas.length}個のネタを削除しますか？`)) {
+                          setData({ ...data, creative: { ...creative, ideas: ideas.filter(i => !selectedIdeas.includes(i.id)) } });
+                          setSelectedIdeas([]);
+                        }
+                      }} disabled={selectedIdeas.length === 0} style={{ padding: '4px 8px', background: selectedIdeas.length > 0 ? theme.error : theme.bgTertiary, color: selectedIdeas.length > 0 ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: selectedIdeas.length > 0 ? 'pointer' : 'not-allowed', fontSize: '9px' }}>
+                        🗑️ 削除 ({selectedIdeas.length})
+                      </button>
+                      <button onClick={() => { setCheckboxMode(false); setSelectedIdeas([]); }} style={{ padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '9px' }}>
+                        キャンセル
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               {/* ステータスフィルター */}
               <div style={{ padding: '6px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2728,8 +2846,25 @@
               <div style={{ padding: '8px' }}>
                 {filteredIdeas.map(idea => {
                   const charCount = (idea.content || '').replace(/[\s\n]/g, '').length;
+                  const isSelected = selectedIdeas.includes(idea.id);
                   return (
-                  <div key={idea.id} onClick={() => setSelectedItem({ ...idea, isIdea: true })} style={{ padding: '10px 12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedItem?.id === idea.id ? theme.highlight : theme.bgTertiary, border: `1px solid ${selectedItem?.id === idea.id ? theme.accent : 'transparent'}` }}>
+                  <div key={idea.id} onClick={() => !checkboxMode && setSelectedItem({ ...idea, isIdea: true })} style={{ padding: '10px 12px', marginBottom: '4px', borderRadius: '8px', cursor: 'pointer', background: selectedItem?.id === idea.id ? theme.highlight : theme.bgTertiary, border: isSelected ? `3px solid ${theme.accent}` : `1px solid ${selectedItem?.id === idea.id ? theme.accent : 'transparent'}`, position: 'relative' }}>
+                    {checkboxMode && (
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          if (e.target.checked) {
+                            setSelectedIdeas(prev => [...prev, idea.id]);
+                          } else {
+                            setSelectedIdeas(prev => prev.filter(id => id !== idea.id));
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ position: 'absolute', top: '8px', right: '8px', width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <Icons.Lightbulb />
                       {editingIdeaId === idea.id ? (
@@ -2782,18 +2917,39 @@
                 {/* ヘッダー */}
                 <div style={{ padding: '8px 10px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '10px', color: theme.textSecondary }}>創作全般のメモ</span>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button onClick={() => {
-                      const newCollapsed = {};
-                      filteredStickies.forEach(s => { newCollapsed[s.id] = !allCollapsed; });
-                      setCollapsedStickies(prev => ({ ...prev, ...newCollapsed }));
-                    }} style={{ padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '9px' }}>
-                      {allCollapsed ? '📂 全開く' : '📁 全閉じる'}
-                    </button>
-                    <button onClick={() => {
-                      const newSticky = { id: `sticky-${Date.now()}`, content: '', color: stickyColors[stickies.length % stickyColors.length], createdAt: new Date().toISOString() };
-                      setData({ ...data, creative: { ...creative, stickies: [newSticky, ...stickies] } });
-                    }} style={{ padding: '4px 10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {!checkboxMode ? (
+                      <>
+                        <button onClick={() => {
+                          const newCollapsed = {};
+                          filteredStickies.forEach(s => { newCollapsed[s.id] = !allCollapsed; });
+                          setCollapsedStickies(prev => ({ ...prev, ...newCollapsed }));
+                        }} style={{ padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '9px' }}>
+                          {allCollapsed ? '📂 全開く' : '📁 全閉じる'}
+                        </button>
+                        <button onClick={() => setCheckboxMode(true)} style={{ padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '9px' }}>
+                          ☑️ 選択
+                        </button>
+                        <button onClick={() => {
+                          const newSticky = { id: `sticky-${Date.now()}`, content: '', color: stickyColors[stickies.length % stickyColors.length], createdAt: new Date().toISOString() };
+                          setData({ ...data, creative: { ...creative, stickies: [newSticky, ...stickies] } });
+                        }} style={{ padding: '4px 10px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 追加</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => {
+                          if (selectedStickies.length > 0 && confirm(`${selectedStickies.length}個の付箋を削除しますか？`)) {
+                            setData({ ...data, creative: { ...creative, stickies: stickies.filter(s => !selectedStickies.includes(s.id)) } });
+                            setSelectedStickies([]);
+                          }
+                        }} disabled={selectedStickies.length === 0} style={{ padding: '4px 8px', background: selectedStickies.length > 0 ? theme.error : theme.bgTertiary, color: selectedStickies.length > 0 ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: selectedStickies.length > 0 ? 'pointer' : 'not-allowed', fontSize: '9px' }}>
+                          🗑️ 削除 ({selectedStickies.length})
+                        </button>
+                        <button onClick={() => { setCheckboxMode(false); setSelectedStickies([]); }} style={{ padding: '4px 8px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '9px' }}>
+                          キャンセル
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 
@@ -2816,8 +2972,23 @@
                 <div style={{ flex: 1, overflow: 'auto', padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {filteredStickies.map(sticky => {
                     const isCollapsed = collapsedStickies[sticky.id];
+                    const isSelected = selectedStickies.includes(sticky.id);
                     return (
-                      <div key={sticky.id} style={{ background: sticky.color, borderRadius: '8px', padding: isCollapsed ? '8px 12px' : '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', position: 'relative' }}>
+                      <div key={sticky.id} style={{ background: sticky.color, borderRadius: '8px', padding: isCollapsed ? '8px 12px' : '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', position: 'relative', border: isSelected ? '3px solid #333' : 'none' }}>
+                        {checkboxMode && (
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedStickies(prev => [...prev, sticky.id]);
+                              } else {
+                                setSelectedStickies(prev => prev.filter(id => id !== sticky.id));
+                              }
+                            }}
+                            style={{ position: 'absolute', top: '8px', right: '8px', width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                        )}
                         {isCollapsed ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => setCollapsedStickies(prev => ({ ...prev, [sticky.id]: false }))}>
                             <span style={{ color: '#333', fontSize: '12px' }}>▶</span>
@@ -2839,9 +3010,11 @@
                               onChange={(e) => {
                                 const newStickies = stickies.map(s => s.id === sticky.id ? { ...s, content: e.target.value } : s);
                                 setData({ ...data, creative: { ...creative, stickies: newStickies } });
+                                autoResize(e.target);
                               }}
+                              ref={(el) => el && autoResize(el)}
                               placeholder="メモを入力..."
-                              style={{ width: '100%', minHeight: '60px', background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '4px', padding: '8px', fontSize: '12px', lineHeight: '1.6', color: '#333', resize: 'none', outline: 'none', fontFamily: '"Noto Sans JP", sans-serif' }}
+                              style={{ width: '100%', minHeight: '60px', background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '4px', padding: '8px', fontSize: '12px', lineHeight: '1.6', color: '#333', resize: 'none', outline: 'none', fontFamily: '"Noto Sans JP", sans-serif', overflow: 'hidden' }}
                             />
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
                               <div style={{ display: 'flex', gap: '4px' }}>
@@ -2896,6 +3069,8 @@
       const [showAddHighlight, setShowAddHighlight] = useState(false);
       const [highlightColor, setHighlightColor] = useState('#FFEB3B');
       const [showSceneProgress, setShowSceneProgress] = useState(false);
+      const [highlightCheckboxMode, setHighlightCheckboxMode] = useState(false);
+      const [selectedHighlights, setSelectedHighlights] = useState([]);
       const textareaRef = useRef(null);
 
       // シーン検出（### シーン名 形式）
@@ -3078,7 +3253,9 @@
           position: selectionPos,
           createdAt: new Date().toISOString()
         };
-        setHighlights([...highlights, newHighlight]);
+        // 最新のhighlightsを取得してから追加
+        const currentHighlights = getHighlights();
+        setHighlights([...currentHighlights, newHighlight]);
         setSelectedText('');
         setSelectionPos(null);
         setNewHighlightNote('');
@@ -3087,8 +3264,26 @@
 
       // ハイライト削除
       const deleteHighlight = (id) => {
-        setHighlights(highlights.filter(h => h.id !== id));
+        const currentHighlights = getHighlights();
+        setHighlights(currentHighlights.filter(h => h.id !== id));
       };
+
+      // ショートカット: Ctrl+Shift+P でハイライト付箋追加
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P' && pane.type === 'chapter') {
+            // テキストが選択されている場合のみ
+            if (selectedText && selectedText.length > 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowAddHighlight(true);
+            }
+          }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+      }, [selectedText, pane.type]);
 
       // ハイライト箇所にジャンプ
       const jumpToHighlight = (highlight) => {
@@ -3315,6 +3510,7 @@
                 onChange={handleTextChange} 
                 onSelect={handleTextSelect}
                 onMouseUp={handleTextSelect}
+                onKeyUp={handleTextSelect}
                 placeholder="ここに執筆..." 
                 style={{ flex: 1, padding: '16px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} 
               />
@@ -3347,8 +3543,32 @@
                     />
                   </div>
                   {/* ハイライト付箋 */}
-                  <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: '11px', fontWeight: '600', color: theme.textSecondary }}>
-                    📌 ハイライト付箋
+                  <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '600', color: theme.textSecondary }}>📌 ハイライト付箋</span>
+                    {highlights.length > 0 && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {!highlightCheckboxMode ? (
+                          <button onClick={() => setHighlightCheckboxMode(true)} style={{ padding: '2px 6px', fontSize: '9px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }}>
+                            ☑️
+                          </button>
+                        ) : (
+                          <>
+                            <button onClick={() => {
+                              if (selectedHighlights.length > 0 && confirm(`${selectedHighlights.length}個のハイライトを削除しますか？`)) {
+                                const currentHighlights = getHighlights();
+                                setHighlights(currentHighlights.filter(h => !selectedHighlights.includes(h.id)));
+                                setSelectedHighlights([]);
+                              }
+                            }} disabled={selectedHighlights.length === 0} style={{ padding: '2px 6px', fontSize: '9px', background: selectedHighlights.length > 0 ? theme.error : theme.bgTertiary, color: selectedHighlights.length > 0 ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '3px', cursor: selectedHighlights.length > 0 ? 'pointer' : 'not-allowed' }}>
+                              🗑️ ({selectedHighlights.length})
+                            </button>
+                            <button onClick={() => { setHighlightCheckboxMode(false); setSelectedHighlights([]); }} style={{ padding: '2px 6px', fontSize: '9px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }}>
+                              ×
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div style={{ padding: '8px' }}>
                     {highlights.length === 0 ? (
@@ -3356,7 +3576,9 @@
                         テキストを選択して<br/>「📌 選択部分に付箋」で追加
                       </div>
                     ) : (
-                      highlights.map(hl => (
+                      highlights.map(hl => {
+                        const isSelected = selectedHighlights.includes(hl.id);
+                        return (
                         <div 
                           key={hl.id} 
                           style={{ 
@@ -3364,11 +3586,28 @@
                             borderRadius: '6px', 
                             padding: '8px', 
                             marginBottom: '6px', 
-                            cursor: 'pointer',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                            cursor: highlightCheckboxMode ? 'default' : 'pointer',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                            border: isSelected ? '3px solid #333' : 'none',
+                            position: 'relative'
                           }}
-                          onClick={() => jumpToHighlight(hl)}
+                          onClick={() => !highlightCheckboxMode && jumpToHighlight(hl)}
                         >
+                          {highlightCheckboxMode && (
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedHighlights(prev => [...prev, hl.id]);
+                                } else {
+                                  setSelectedHighlights(prev => prev.filter(id => id !== hl.id));
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ position: 'absolute', top: '6px', right: '6px', width: '16px', height: '16px', cursor: 'pointer' }}
+                            />
+                          )}
                           <div style={{ fontSize: '10px', color: '#333', marginBottom: '4px', fontStyle: 'italic', borderLeft: '2px solid #333', paddingLeft: '6px' }}>
                             "{hl.text.substring(0, 30)}{hl.text.length > 30 ? '...' : ''}"
                           </div>
@@ -3377,15 +3616,18 @@
                               {hl.note}
                             </div>
                           )}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-                            <span style={{ fontSize: '9px', color: 'rgba(0,0,0,0.5)' }}>クリックでジャンプ</span>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); deleteHighlight(hl.id); }}
-                              style={{ padding: '2px 6px', fontSize: '9px', background: 'rgba(0,0,0,0.2)', color: '#333', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
-                            >🗑️</button>
-                          </div>
+                          {!highlightCheckboxMode && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                              <span style={{ fontSize: '9px', color: 'rgba(0,0,0,0.5)' }}>クリックでジャンプ</span>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); deleteHighlight(hl.id); }}
+                                style={{ padding: '2px 6px', fontSize: '9px', background: 'rgba(0,0,0,0.2)', color: '#333', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                              >🗑️</button>
+                            </div>
+                          )}
                         </div>
-                      ))
+                      );
+                      })
                     )}
                   </div>
                 </div>
@@ -3395,7 +3637,7 @@
         </div>
       );
     }, (prevProps, nextProps) => {
-      // pane.idとcontentが同じで、かつシーン進捗も同じなら再レンダリングしない
+      // pane.idとcontentが同じで、かつシーン進捗、ハイライト、メモも同じなら再レンダリングしない
       if (prevProps.pane.id !== nextProps.pane.id) return false;
       if (prevProps.pane.content !== nextProps.pane.content) return false;
       
@@ -3410,6 +3652,30 @@
       const prevSP = getSceneProgress(prevProps);
       const nextSP = getSceneProgress(nextProps);
       if (JSON.stringify(prevSP) !== JSON.stringify(nextSP)) return false;
+      
+      // ハイライトの比較
+      const getHighlights = (props) => {
+        const { pane, data } = props;
+        if (!pane.projectId || !pane.status) return [];
+        const project = data.creative[pane.status]?.find(p => p.id === pane.projectId);
+        const item = project?.items?.find(i => i.id === pane.id);
+        return item?.highlights || [];
+      };
+      const prevHighlights = getHighlights(prevProps);
+      const nextHighlights = getHighlights(nextProps);
+      if (JSON.stringify(prevHighlights) !== JSON.stringify(nextHighlights)) return false;
+      
+      // メモの比較
+      const getNote = (props) => {
+        const { pane, data } = props;
+        if (!pane.projectId || !pane.status) return '';
+        const project = data.creative[pane.status]?.find(p => p.id === pane.projectId);
+        const item = project?.items?.find(i => i.id === pane.id);
+        return item?.note || '';
+      };
+      const prevNote = getNote(prevProps);
+      const nextNote = getNote(nextProps);
+      if (prevNote !== nextNote) return false;
       
       return true;
     });
@@ -4120,6 +4386,7 @@
       const [isResizing, setIsResizing] = useState(false);
       const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // サイドバー折りたたみ
       const [showFloatingTimer, setShowFloatingTimer] = useState(false); // フローティングタイマー表示
+      const [creativeActiveTab, setCreativeActiveTab] = useState('works'); // 創作タブ（作品/ネタ/付箋）
       
       // パスワード保護関連
       const [isUnlocked, setIsUnlocked] = useState(false);
@@ -4215,6 +4482,17 @@
       });
 
       const theme = getTheme(darkMode);
+      
+      // JSONエクスポート
+      const exportToJSON = () => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `note-backup-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
       
       // Gistに保存
       const handleSaveToGist = async () => {
@@ -4404,11 +4682,121 @@
               alert('GitHubトークンとパスワードを設定してください（設定画面から）');
             }
           }
+
+          // 創作セクションでのみ有効なショートカット
+          if (currentSection === 'creative') {
+            // Ctrl+1/2/3 でタブ切り替え
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+              if (e.key === '1') {
+                e.preventDefault();
+                setCreativeActiveTab('works');
+              } else if (e.key === '2') {
+                e.preventDefault();
+                setCreativeActiveTab('ideas');
+              } else if (e.key === '3') {
+                e.preventDefault();
+                setCreativeActiveTab('stickies');
+              }
+            }
+
+            // Ctrl+Shift+M でネタ追加
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
+              e.preventDefault();
+              setCreativeActiveTab('ideas');
+              // ネタを追加
+              const newIdea = { 
+                id: `idea-${Date.now()}`, 
+                title: '新しいネタ', 
+                content: '', 
+                tags: [], 
+                status: 'unused', 
+                createdAt: new Date().toISOString() 
+              };
+              setData(prev => ({ 
+                ...prev, 
+                creative: { 
+                  ...prev.creative, 
+                  ideas: [newIdea, ...(prev.creative.ideas || [])] 
+                } 
+              }));
+              // 新しいネタを開く
+              setTimeout(() => {
+                setSelectedItem({ ...newIdea, isIdea: true });
+              }, 100);
+            }
+
+            // Ctrl+Shift+P で付箋追加（エディタでテキスト選択してない時のみ）
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+              // エディタ内でテキスト選択してる場合はスキップ（SplitEditorでハイライト付箋として処理）
+              const activeElement = document.activeElement;
+              const isInEditor = activeElement && activeElement.tagName === 'TEXTAREA' && activeElement.selectionStart !== activeElement.selectionEnd;
+              
+              if (!isInEditor) {
+                e.preventDefault();
+                setCreativeActiveTab('stickies');
+                // 付箋を追加
+                const stickyColors = data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'];
+                const stickies = data.creative?.stickies || [];
+                const newSticky = { 
+                  id: `sticky-${Date.now()}`, 
+                  content: '', 
+                  color: stickyColors[stickies.length % stickyColors.length], 
+                  createdAt: new Date().toISOString() 
+                };
+                setData(prev => ({ 
+                  ...prev, 
+                  creative: { 
+                    ...prev.creative, 
+                    stickies: [newSticky, ...(prev.creative.stickies || [])] 
+                  } 
+                }));
+              }
+            }
+          }
+
+          // Ctrl+Shift+L でGist読み込み
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
+            e.preventDefault();
+            handleLoadFromGist();
+          }
+
+          // Ctrl+Shift+E でJSONエクスポート
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E') {
+            e.preventDefault();
+            exportToJSON();
+          }
+
+          // Ctrl+Shift+I でJSONインポート
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
+            e.preventDefault();
+            // ファイル選択ダイアログを開く
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (event) => {
+              const file = event.target.files[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                  try {
+                    const imported = JSON.parse(e.target.result);
+                    setData(imported);
+                    localStorage.setItem('noteAppDataV2', e.target.result);
+                    alert('データをインポートしました！');
+                  } catch (err) {
+                    alert('インポートに失敗しました: ' + err.message);
+                  }
+                };
+                reader.readAsText(file);
+              }
+            };
+            input.click();
+          }
         };
 
         document.addEventListener('keydown', handleKeyDown, true); // useCapture=trueで優先的にキャッチ
         return () => document.removeEventListener('keydown', handleKeyDown, true);
-      }, [syncSettings.githubToken, syncSettings.passwordHash, handleSaveToGist]);
+      }, [syncSettings.githubToken, syncSettings.passwordHash, handleSaveToGist, handleLoadFromGist, exportToJSON, currentSection, data, setData, setSelectedItem, setCreativeActiveTab]);
 
       // 互換性のため
       const selectedItem = openPanes.find(p => p.id === activePaneId) || openPanes[0] || null;
@@ -4806,7 +5194,7 @@
                       <Icons.ChevronLeft />
                     </button>
                   </div>
-                  <CreativeSection data={data} setData={setData} selectedItem={selectedItem} setSelectedItem={setSelectedItem} openInNewPane={openInNewPane} theme={theme} sidebarWidth={sidebarWidth} />
+                  <CreativeSection data={data} setData={setData} selectedItem={selectedItem} setSelectedItem={setSelectedItem} openInNewPane={openInNewPane} theme={theme} sidebarWidth={sidebarWidth} activeTab={creativeActiveTab} setActiveTab={setCreativeActiveTab} />
                 </div>
               )}
               {!sidebarCollapsed && <div className="resizer" onMouseDown={handleMouseDown} style={{ background: isResizing ? theme.accent : 'transparent' }} />}
@@ -4828,6 +5216,8 @@
                 openInNewPane={(item) => { openInNewPane(item); setShowMobileSidebar(false); }} 
                 theme={theme} 
                 sidebarWidth={window.innerWidth} 
+                activeTab={creativeActiveTab}
+                setActiveTab={setCreativeActiveTab}
               />
             </div>
           )}
@@ -4861,6 +5251,8 @@
                         openInNewPane={(item) => { openInNewPane(item); }} 
                         theme={theme} 
                         sidebarWidth={window.innerWidth} 
+                        activeTab={creativeActiveTab}
+                        setActiveTab={setCreativeActiveTab}
                       />
                     </div>
                   ) : (
