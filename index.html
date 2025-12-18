@@ -138,6 +138,24 @@
 
     // ==================== 暗号化ユーティリティ ====================
     const CryptoUtils = {
+      // Web Crypto APIが使えるかチェック
+      isAvailable() {
+        if (!window.crypto || !window.crypto.subtle) {
+          return { available: false, reason: 'Web Crypto APIがサポートされていません' };
+        }
+        
+        // iOS Safariのプライベートブラウジングチェック
+        try {
+          // localStorageのテスト
+          const test = '__crypto_test__';
+          localStorage.setItem(test, test);
+          localStorage.removeItem(test);
+          return { available: true };
+        } catch (e) {
+          return { available: false, reason: 'プライベートブラウジングモードでは使用できません。通常モードに切り替えてください。' };
+        }
+      },
+      
       // パスワードから暗号化キーを生成
       async deriveKey(password, salt) {
         const encoder = new TextEncoder();
@@ -3271,7 +3289,7 @@
       // ショートカット: Ctrl+Shift+P でハイライト付箋追加
       useEffect(() => {
         const handleKeyDown = (e) => {
-          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P' && pane.type === 'chapter') {
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'P' && pane.type === 'chapter') {
             // テキストが選択されている場合のみ
             if (selectedText && selectedText.length > 0) {
               e.preventDefault();
@@ -4492,10 +4510,19 @@
         a.download = `note-backup-${new Date().toISOString().split('T')[0]}.json`;
         a.click();
         URL.revokeObjectURL(url);
+        // 成功メッセージ
+        setTimeout(() => alert('JSONファイルを保存しました！'), 100);
       };
       
       // Gistに保存
       const handleSaveToGist = async () => {
+        // Web Crypto APIのチェック
+        const cryptoCheck = CryptoUtils.isAvailable();
+        if (!cryptoCheck.available) {
+          alert(`暗号化機能が利用できません\n\n${cryptoCheck.reason}`);
+          return;
+        }
+        
         if (!syncSettings.githubToken || !syncSettings.passwordHash) {
           alert('GitHubトークンとパスワードを設定してください');
           return;
@@ -4544,6 +4571,7 @@
           }
           
           setSyncStatus('saved');
+          alert('GitHubに保存しました！');
           setTimeout(() => setSyncStatus(''), 3000);
         } catch (e) {
           console.error('Gist save error:', e);
@@ -4555,6 +4583,13 @@
       
       // Gistから読み込み
       const handleLoadFromGist = async (passwordFromModal) => {
+        // Web Crypto APIのチェック
+        const cryptoCheck = CryptoUtils.isAvailable();
+        if (!cryptoCheck.available) {
+          alert(`暗号化機能が利用できません\n\n${cryptoCheck.reason}`);
+          return;
+        }
+        
         // どれが足りないかチェック
         const missing = [];
         if (!syncSettings.githubToken) missing.push('GitHubトークン');
@@ -4598,17 +4633,24 @@
         
         try {
           setSyncStatus('loading');
+          
+          console.log('[Gist読み込み] ステップ1: Gistからデータ取得開始');
           const gistData = await GistAPI.loadFromGist(syncSettings.githubToken, syncSettings.gistId);
+          console.log('[Gist読み込み] ステップ2: Gistデータ取得完了');
           
           // パスワードハッシュの検証
           if (gistData.hash !== syncSettings.passwordHash) {
             throw new Error('パスワードが一致しません。別のパスワードで暗号化されています。');
           }
+          console.log('[Gist読み込み] ステップ3: パスワードハッシュ検証完了');
           
+          console.log('[Gist読み込み] ステップ4: 復号化開始');
           const decrypted = await CryptoUtils.decrypt(gistData.encrypted, password);
+          console.log('[Gist読み込み] ステップ5: 復号化完了');
           
           // 現在のローカルデータを取得
           const currentData = JSON.parse(localStorage.getItem('noteAppDataV2') || '{}');
+          console.log('[Gist読み込み] ステップ6: ローカルデータ取得完了');
           
           // 新しいフィールドをマージ（古いバージョンで保存されたデータにない場合に保持）
           const mergedData = {
@@ -4623,6 +4665,7 @@
               stickies: decrypted.creative?.stickies || currentData.creative?.stickies || [],
             }
           };
+          console.log('[Gist読み込み] ステップ7: データマージ完了');
           
           // プロジェクト内の付箋とハイライトもマージ
           ['inProgress', 'completed', 'onHold'].forEach(status => {
@@ -4663,8 +4706,30 @@
           
         } catch (e) {
           console.error('Gist load error:', e);
+          console.error('Error stack:', e.stack);
           setSyncStatus('error');
-          alert('読み込みに失敗しました: ' + e.message);
+          
+          // より詳細なエラーメッセージ
+          let errorMsg = '読み込みに失敗しました\n\n';
+          errorMsg += `エラー: ${e.message}\n\n`;
+          
+          if (e.message.includes('fetch') || e.message.includes('network')) {
+            errorMsg += '【原因】ネットワークエラーの可能性があります\n';
+            errorMsg += '・インターネット接続を確認してください\n';
+            errorMsg += '・GitHubトークンが正しいか確認してください';
+          } else if (e.message.includes('decrypt') || e.message.includes('crypto')) {
+            errorMsg += '【原因】復号化に失敗しました\n';
+            errorMsg += '・パスワードが正しいか確認してください\n';
+            errorMsg += '・iOS/Safariの場合、プライベートブラウジングを解除してください';
+          } else if (e.message.includes('JSON') || e.message.includes('parse')) {
+            errorMsg += '【原因】データの読み込みに失敗しました\n';
+            errorMsg += '・Gistのデータが破損している可能性があります';
+          } else {
+            errorMsg += '【デバッグ情報】\n';
+            errorMsg += 'ブラウザのコンソールを確認してください';
+          }
+          
+          alert(errorMsg);
           setTimeout(() => setSyncStatus(''), 3000);
         }
       };
@@ -4673,102 +4738,37 @@
       useEffect(() => {
         const handleKeyDown = (e) => {
           // Ctrl+S (Windows/Linux) または Cmd+S (Mac)
-          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-            e.preventDefault(); // ブラウザのデフォルト保存を防ぐ
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && !e.shiftKey) {
+            e.preventDefault();
             e.stopPropagation();
             if (syncSettings.githubToken && syncSettings.passwordHash) {
               handleSaveToGist();
             } else {
               alert('GitHubトークンとパスワードを設定してください（設定画面から）');
             }
+            return;
           }
 
-          // 創作セクションでのみ有効なショートカット
-          if (currentSection === 'creative') {
-            // Ctrl+1/2/3 でタブ切り替え
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-              if (e.key === '1') {
-                e.preventDefault();
-                setCreativeActiveTab('works');
-              } else if (e.key === '2') {
-                e.preventDefault();
-                setCreativeActiveTab('ideas');
-              } else if (e.key === '3') {
-                e.preventDefault();
-                setCreativeActiveTab('stickies');
-              }
-            }
-
-            // Ctrl+Shift+M でネタ追加
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
-              e.preventDefault();
-              setCreativeActiveTab('ideas');
-              // ネタを追加
-              const newIdea = { 
-                id: `idea-${Date.now()}`, 
-                title: '新しいネタ', 
-                content: '', 
-                tags: [], 
-                status: 'unused', 
-                createdAt: new Date().toISOString() 
-              };
-              setData(prev => ({ 
-                ...prev, 
-                creative: { 
-                  ...prev.creative, 
-                  ideas: [newIdea, ...(prev.creative.ideas || [])] 
-                } 
-              }));
-              // 新しいネタを開く
-              setTimeout(() => {
-                setSelectedItem({ ...newIdea, isIdea: true });
-              }, 100);
-            }
-
-            // Ctrl+Shift+P で付箋追加（エディタでテキスト選択してない時のみ）
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
-              // エディタ内でテキスト選択してる場合はスキップ（SplitEditorでハイライト付箋として処理）
-              const activeElement = document.activeElement;
-              const isInEditor = activeElement && activeElement.tagName === 'TEXTAREA' && activeElement.selectionStart !== activeElement.selectionEnd;
-              
-              if (!isInEditor) {
-                e.preventDefault();
-                setCreativeActiveTab('stickies');
-                // 付箋を追加
-                const stickyColors = data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'];
-                const stickies = data.creative?.stickies || [];
-                const newSticky = { 
-                  id: `sticky-${Date.now()}`, 
-                  content: '', 
-                  color: stickyColors[stickies.length % stickyColors.length], 
-                  createdAt: new Date().toISOString() 
-                };
-                setData(prev => ({ 
-                  ...prev, 
-                  creative: { 
-                    ...prev.creative, 
-                    stickies: [newSticky, ...(prev.creative.stickies || [])] 
-                  } 
-                }));
-              }
-            }
-          }
-
-          // Ctrl+Shift+L でGist読み込み
-          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
+          // Ctrl+Shift+L でGist読み込み（全セクション共通）
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'L') {
             e.preventDefault();
+            e.stopPropagation();
             handleLoadFromGist();
+            return;
           }
 
-          // Ctrl+Shift+E でJSONエクスポート
-          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E') {
+          // Ctrl+Shift+E でJSONエクスポート（全セクション共通）
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'E') {
             e.preventDefault();
+            e.stopPropagation();
             exportToJSON();
+            return;
           }
 
-          // Ctrl+Shift+I でJSONインポート
-          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
+          // Ctrl+Shift+I でJSONインポート（全セクション共通）
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'I') {
             e.preventDefault();
+            e.stopPropagation();
             // ファイル選択ダイアログを開く
             const input = document.createElement('input');
             input.type = 'file';
@@ -4791,6 +4791,88 @@
               }
             };
             input.click();
+            return;
+          }
+
+          // 創作セクションでのみ有効なショートカット
+          if (currentSection === 'creative') {
+            // Ctrl+1/2/3 でタブ切り替え
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+              if (e.key === '1') {
+                e.preventDefault();
+                e.stopPropagation();
+                setCreativeActiveTab('works');
+                return;
+              } else if (e.key === '2') {
+                e.preventDefault();
+                e.stopPropagation();
+                setCreativeActiveTab('ideas');
+                return;
+              } else if (e.key === '3') {
+                e.preventDefault();
+                e.stopPropagation();
+                setCreativeActiveTab('stickies');
+                return;
+              }
+            }
+
+            // Ctrl+Shift+M でネタ追加
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'M') {
+              e.preventDefault();
+              e.stopPropagation();
+              setCreativeActiveTab('ideas');
+              // ネタを追加
+              const newIdea = { 
+                id: `idea-${Date.now()}`, 
+                title: '新しいネタ', 
+                content: '', 
+                tags: [], 
+                status: 'unused', 
+                createdAt: new Date().toISOString() 
+              };
+              setData(prev => ({ 
+                ...prev, 
+                creative: { 
+                  ...prev.creative, 
+                  ideas: [newIdea, ...(prev.creative.ideas || [])] 
+                } 
+              }));
+              // 新しいネタを開く
+              setTimeout(() => {
+                setSelectedItem({ ...newIdea, isIdea: true });
+              }, 100);
+              return;
+            }
+
+            // Ctrl+Shift+P で付箋追加（エディタでテキスト選択してない時のみ）
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'P') {
+              // エディタ内でテキスト選択してる場合はスキップ（SplitEditorでハイライト付箋として処理）
+              const activeElement = document.activeElement;
+              const isInEditor = activeElement && activeElement.tagName === 'TEXTAREA' && activeElement.selectionStart !== activeElement.selectionEnd;
+              
+              if (!isInEditor) {
+                e.preventDefault();
+                e.stopPropagation();
+                setCreativeActiveTab('stickies');
+                // 付箋を追加
+                const stickyColors = data.stickyColors || ['#FFEB3B', '#FF9800', '#E91E63', '#4CAF50', '#2196F3', '#9C27B0'];
+                const stickies = data.creative?.stickies || [];
+                const newSticky = { 
+                  id: `sticky-${Date.now()}`, 
+                  content: '', 
+                  color: stickyColors[stickies.length % stickyColors.length], 
+                  createdAt: new Date().toISOString() 
+                };
+                setData(prev => ({ 
+                  ...prev, 
+                  creative: { 
+                    ...prev.creative, 
+                    stickies: [newSticky, ...(prev.creative.stickies || [])] 
+                  } 
+                }));
+                return;
+              }
+            }
           }
         };
 
