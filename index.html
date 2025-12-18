@@ -409,11 +409,31 @@
 
     // ==================== フローティングポモドーロ ====================
     const FloatingPomodoro = ({ theme, onClose }) => {
-      const [mode, setMode] = useState('work');
-      const [timeLeft, setTimeLeft] = useState(55 * 60);
-      const [isRunning, setIsRunning] = useState(false);
-      const [customWork, setCustomWork] = useState(55);
-      const [customBreak, setCustomBreak] = useState(5);
+      // localStorageから初期状態を復元
+      const getSavedState = () => {
+        try {
+          const saved = localStorage.getItem('pomodoroState');
+          if (saved) {
+            const state = JSON.parse(saved);
+            // タイマーが動いていた場合、経過時間を計算
+            if (state.isRunning && state.lastUpdateTime) {
+              const elapsed = Math.floor((Date.now() - state.lastUpdateTime) / 1000);
+              state.timeLeft = Math.max(0, state.timeLeft - elapsed);
+            }
+            return state;
+          }
+        } catch (e) {
+          console.log('Failed to load pomodoro state');
+        }
+        return null;
+      };
+
+      const savedState = getSavedState();
+      const [mode, setMode] = useState(savedState?.mode || 'work');
+      const [timeLeft, setTimeLeft] = useState(savedState?.timeLeft || 55 * 60);
+      const [isRunning, setIsRunning] = useState(savedState?.isRunning || false);
+      const [customWork, setCustomWork] = useState(savedState?.customWork || 55);
+      const [customBreak, setCustomBreak] = useState(savedState?.customBreak || 5);
       const [isMinimized, setIsMinimized] = useState(false);
       const [showSettings, setShowSettings] = useState(false);
       
@@ -660,6 +680,23 @@
       const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
       const progress = mode === 'work' ? (1 - timeLeft / (customWork * 60)) * 100 : (1 - timeLeft / (customBreak * 60)) * 100;
 
+      // 状態をlocalStorageに保存
+      useEffect(() => {
+        try {
+          const state = {
+            mode,
+            timeLeft,
+            isRunning,
+            customWork,
+            customBreak,
+            lastUpdateTime: Date.now()
+          };
+          localStorage.setItem('pomodoroState', JSON.stringify(state));
+        } catch (e) {
+          console.log('Failed to save pomodoro state');
+        }
+      }, [mode, timeLeft, isRunning, customWork, customBreak]);
+
       // リセット処理
       const handleReset = () => {
         setIsRunning(false);
@@ -668,6 +705,8 @@
         isFadingRef.current = false;
         if (bgmRef.current) bgmRef.current.pause();
         if (countdownRef.current) countdownRef.current.pause();
+        // localStorageもクリア
+        localStorage.removeItem('pomodoroState');
       };
 
       // 最小化時
@@ -1203,8 +1242,21 @@
         }
       };
 
-      const handleDragStart = (e, id) => { setDraggedId(id); e.dataTransfer.effectAllowed = 'move'; };
-      const handleDragOver = (e, id) => { e.preventDefault(); if (id !== draggedId) setDragOverId(id); };
+      const handleDragStart = (e, id) => { 
+        setDraggedId(id); 
+        e.dataTransfer.effectAllowed = 'move';
+        // ドラッグ開始時のスクロール位置を保存
+        saveScrollPosition();
+      };
+      const handleDragOver = (e, id) => { 
+        e.preventDefault();
+        e.stopPropagation();
+        if (id !== draggedId) setDragOverId(id);
+        // ドラッグ中はスクロール位置を固定
+        if (scrollContainerRef.current && scrollPositionRef.current !== null) {
+          scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+        }
+      };
       const handleDragLeave = () => { setDragOverId(null); };
       const handleDrop = (e, targetId) => {
         e.preventDefault();
@@ -1221,7 +1273,11 @@
         setDraggedId(null);
         setDragOverId(null);
       };
-      const handleDragEnd = () => { setDraggedId(null); setDragOverId(null); };
+      const handleDragEnd = () => { 
+        setDraggedId(null); 
+        setDragOverId(null); 
+        scrollPositionRef.current = 0; // リセット
+      };
 
       const hasChildren = (idx) => idx + 1 < sections.length && sections[idx + 1].level > sections[idx].level;
       const isHidden = (idx) => {
@@ -2218,7 +2274,7 @@
                         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = `2px solid ${theme.accent}`; }}
                         onDragLeave={(e) => { e.currentTarget.style.borderTop = 'none'; }}
                         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = 'none'; const draggedId = e.dataTransfer.getData('itemId'); if (draggedId && draggedId !== item.id) reorderItems(p.id, status, draggedId, item.id, 'before'); }}
-                        onClick={() => setSelectedItem({...item, projectId: p.id, status})} 
+                        onClick={() => openInNewPane({...item, projectId: p.id, status})} 
                         style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent' }}
                       >
                         <Icons.GripVertical />
@@ -2320,7 +2376,7 @@
                                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = `2px solid ${theme.accent}`; }}
                                   onDragLeave={(e) => { e.currentTarget.style.borderTop = 'none'; }}
                                   onDrop={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderTop = 'none'; const draggedId = e.dataTransfer.getData('itemId'); if (draggedId && draggedId !== item.id) reorderItems(p.id, status, draggedId, item.id, 'before'); }}
-                                  onClick={() => setSelectedItem({...item, projectId: p.id, status})} 
+                                  onClick={() => openInNewPane({...item, projectId: p.id, status})} 
                                   style={{ display: 'flex', alignItems: 'center', padding: '5px 10px', margin: '1px 6px', borderRadius: '4px', cursor: 'grab', gap: '6px', fontSize: '12px', background: selectedItem?.id === item.id ? theme.highlight : 'transparent' }}
                                 >
                                   <Icons.GripVertical />
@@ -4334,6 +4390,25 @@
           setTimeout(() => setSyncStatus(''), 3000);
         }
       };
+
+      // Ctrl+S / Cmd+S で保存
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          // Ctrl+S (Windows/Linux) または Cmd+S (Mac)
+          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault(); // ブラウザのデフォルト保存を防ぐ
+            e.stopPropagation();
+            if (syncSettings.githubToken && syncSettings.passwordHash) {
+              handleSaveToGist();
+            } else {
+              alert('GitHubトークンとパスワードを設定してください（設定画面から）');
+            }
+          }
+        };
+
+        document.addEventListener('keydown', handleKeyDown, true); // useCapture=trueで優先的にキャッチ
+        return () => document.removeEventListener('keydown', handleKeyDown, true);
+      }, [syncSettings.githubToken, syncSettings.passwordHash, handleSaveToGist]);
 
       // 互換性のため
       const selectedItem = openPanes.find(p => p.id === activePaneId) || openPanes[0] || null;
