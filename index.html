@@ -1161,11 +1161,26 @@
     };
 
     // ==================== アウトラインエディタ ====================
-    const OutlineEditor = ({ content, onChange, theme }) => {
-      const [collapsed, setCollapsed] = useState({});
+    const OutlineEditor = ({ content, onChange, theme, editorId }) => {
+      const storageKey = editorId ? `outline-collapsed-${editorId}` : null;
+      const contentStorageKey = editorId ? `outline-content-collapsed-${editorId}` : null;
+      const [collapsed, setCollapsed] = useState(() => {
+        if (storageKey) { try { return JSON.parse(localStorage.getItem(storageKey)) || {}; } catch(e) {} }
+        return {};
+      });
       const [draggedId, setDraggedId] = useState(null);
       const [dragOverId, setDragOverId] = useState(null);
-      const [contentCollapsed, setContentCollapsed] = useState({}); // 内容部分の折りたたみ
+      const [contentCollapsed, setContentCollapsed] = useState(() => {
+        if (contentStorageKey) { try { return JSON.parse(localStorage.getItem(contentStorageKey)) || {}; } catch(e) {} }
+        return {};
+      });
+      // 折りたたみ状態をlocalStorageに保存
+      useEffect(() => {
+        if (storageKey) localStorage.setItem(storageKey, JSON.stringify(collapsed));
+      }, [collapsed, storageKey]);
+      useEffect(() => {
+        if (contentStorageKey) localStorage.setItem(contentStorageKey, JSON.stringify(contentCollapsed));
+      }, [contentCollapsed, contentStorageKey]);
       const scrollContainerRef = useRef(null);
       const scrollPositionRef = useRef(0);
 
@@ -1271,7 +1286,13 @@
         }
       };
 
-      const handleDragStart = (e, id) => { 
+      const dragAllowedRef = useRef(false);
+      const handleDragStart = (e, id) => {
+        // グリップアイコンからのドラッグのみ許可
+        if (!dragAllowedRef.current) {
+          e.preventDefault();
+          return;
+        }
         setDraggedId(id); 
         e.dataTransfer.effectAllowed = 'move';
         // ドラッグ開始時のスクロール位置を保存
@@ -1305,6 +1326,7 @@
       const handleDragEnd = () => { 
         setDraggedId(null); 
         setDragOverId(null); 
+        dragAllowedRef.current = false;
         scrollPositionRef.current = 0; // リセット
       };
 
@@ -1395,7 +1417,7 @@
                   {isDragOver && <div style={{ height: '3px', background: theme.accent, borderRadius: '2px', marginBottom: '4px' }} />}
                   <div style={{ background: theme.bgSecondary, borderRadius: '8px', border: `1px solid ${isDragOver ? theme.accent : theme.border}`, borderLeft: s.level === 1 ? `4px solid ${theme.accent}` : s.level === 2 ? `4px solid ${theme.accentLight}` : `4px solid ${theme.border}`, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: isCollapsedItem ? theme.bgTertiary : 'transparent', borderBottom: (isCollapsedItem || contentCollapsed[s.id]) ? 'none' : `1px solid ${theme.border}` }}>
-                      <span style={{ cursor: 'grab', color: theme.textSecondary, display: 'flex', padding: '2px' }} title="ドラッグで移動"><Icons.GripVertical /></span>
+                      <span data-drag-handle="true" onMouseDown={() => { dragAllowedRef.current = true; }} onMouseUp={() => { dragAllowedRef.current = false; }} style={{ cursor: 'grab', color: theme.textSecondary, display: 'flex', padding: '2px' }} title="ドラッグで移動"><Icons.GripVertical /></span>
                       <span onClick={() => toggleCollapse(s.id)} style={{ color: theme.textSecondary, display: 'flex', transform: isCollapsedItem ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.2s', cursor: 'pointer', padding: '2px' }} title="子項目も含めて折りたたみ"><Icons.ChevronRight /></span>
                       <input type="text" value={s.title} onChange={(e) => updateSection(s.id, 'title', e.target.value)} placeholder="タイトルを入力..." style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: s.level === 1 ? '15px' : '14px', fontWeight: s.level === 1 ? '600' : '500', color: s.level === 1 ? theme.accent : theme.text, padding: '4px' }} />
                       {(isCollapsedItem || contentCollapsed[s.id]) && s.content.trim() && <span style={{ fontSize: '11px', color: theme.textSecondary, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.content.trim().substring(0, 25)}...</span>}
@@ -1538,7 +1560,9 @@
                       {(data.dailyTags || ['仕事', '買い物', 'アイデア', '日記']).filter(t => !selectedMemo.tags.includes(t)).map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
-                  <textarea value={selectedMemo.content} onChange={(e) => updateMemo(selectedMemo.id, 'content', e.target.value)} placeholder="メモを入力..." style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                  <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
+                    <textarea value={selectedMemo.content} onChange={(e) => updateMemo(selectedMemo.id, 'content', e.target.value)} placeholder="メモを入力..." style={{ width: '800px', padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                  </div>
                 </>
               ) : (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary }}>メモを選択してね</div>
@@ -1725,7 +1749,9 @@
                       <input type="date" value={selectedInput.finishDate} onChange={(e) => updateInput(selectedInput.id, 'finishDate', e.target.value)} style={{ padding: '8px 12px', background: theme.bgTertiary, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.text, fontSize: '13px' }} />
                     </div>
                   </div>
-                  <textarea value={selectedInput.content} onChange={(e) => updateInput(selectedInput.id, 'content', e.target.value)} placeholder="感想・メモを入力..." style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                  <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
+                    <textarea value={selectedInput.content} onChange={(e) => updateInput(selectedInput.id, 'content', e.target.value)} placeholder="感想・メモを入力..." style={{ width: '800px', padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                  </div>
                 </>
               ) : (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textSecondary }}>記録を選択してね</div>
@@ -2218,21 +2244,22 @@
               <button onClick={(e) => { e.stopPropagation(); addProject(status); }} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', padding: '2px' }}><Icons.Plus /></button>
             </div>
             
-            {!isCollapsed && filteredProjects.map(p => (
+            {!isCollapsed && filteredProjects.map((p, pIndex) => (
               <div 
                 key={p.id}
                 draggable
                 onDragStart={(e) => handleProjectDragStart(e, p, status)}
                 onDragEnd={handleDragEnd}
+                style={{ borderBottom: pIndex < filteredProjects.length - 1 ? `2px solid ${theme.border}` : 'none', paddingBottom: pIndex < filteredProjects.length - 1 ? '8px' : '0', marginBottom: pIndex < filteredProjects.length - 1 ? '8px' : '0' }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', margin: '0 8px', borderRadius: '6px', gap: '6px', background: p.expanded ? theme.bgTertiary : 'transparent', cursor: 'grab' }}>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', margin: '0 8px', borderRadius: '6px', gap: '6px', background: p.expanded ? theme.bgTertiary : 'transparent', cursor: 'grab', minWidth: 0, overflow: 'hidden' }}>
                   <Icons.GripVertical />
                   <span onClick={() => toggleProject(p.id, status)} style={{ cursor: 'pointer', display: 'flex' }}>{p.expanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}</span>
                   <Icons.Folder />
                   {editingProjectId === p.id ? (
-                    <input type="text" value={p.name} onChange={(e) => renameProject(p.id, status, e.target.value)} onBlur={() => setEditingProjectId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingProjectId(null)} autoFocus style={{ flex: 1, fontSize: '13px', fontWeight: '500', background: theme.bg, border: `1px solid ${theme.accent}`, outline: 'none', color: theme.text, padding: '2px 6px', borderRadius: '4px' }} />
+                    <input type="text" value={p.name} onChange={(e) => renameProject(p.id, status, e.target.value)} onBlur={() => setEditingProjectId(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingProjectId(null)} autoFocus style={{ flex: 1, fontSize: '10.5px', fontWeight: '500', background: theme.bg, border: `1px solid ${theme.accent}`, outline: 'none', color: theme.text, padding: '2px 6px', borderRadius: '4px' }} />
                   ) : (
-                    <span onDoubleClick={() => setEditingProjectId(p.id)} style={{ flex: 1, fontSize: '13px', fontWeight: '500', cursor: 'default' }}>{p.name}</span>
+                    <span onDoubleClick={() => setEditingProjectId(p.id)} style={{ flex: 1, fontSize: '10.5px', fontWeight: '500', cursor: 'default', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.name}</span>
                   )}
                   <span style={{ fontSize: '11px', color: theme.accent }}>{countChars(p).toLocaleString()}字</span>
                   {checkboxMode && selectedItems[p.id]?.length > 0 && (
@@ -2545,6 +2572,7 @@
                     
                     {/* 章の追加ボタン */}
                     <div style={{ display: 'flex', gap: '4px', padding: '6px 10px', marginTop: '4px' }}>
+                      <button onClick={() => addItem(p.id, status, 'chapter')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accent, border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 話を追加</button>
                       <button onClick={() => addItem(p.id, status, 'section')} style={{ padding: '4px 8px', fontSize: '10px', background: theme.accentLight, border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Icons.Plus /> 章を追加</button>
                     </div>
                     
@@ -3516,7 +3544,7 @@
           )}
           {pane.type === 'memo' ? (
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <OutlineEditor content={pane.content || ''} onChange={onUpdate} theme={theme} />
+              <OutlineEditor content={pane.content || ''} onChange={onUpdate} theme={theme} editorId={pane.id} />
             </div>
           ) : (
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -3774,7 +3802,9 @@
                 )}
               </div>
             </div>
-            <textarea value={currentIdea.content || ''} onChange={(e) => updateIdea('content', e.target.value)} placeholder="ネタの詳細を入力...&#10;&#10;あらすじ、キャラ設定、シーンのイメージなど自由に書いてね" style={{ flex: 1, padding: '20px 24px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', background: theme.bg }}>
+              <textarea value={currentIdea.content || ''} onChange={(e) => updateIdea('content', e.target.value)} placeholder="ネタの詳細を入力...&#10;&#10;あらすじ、キャラ設定、シーンのイメージなど自由に書いてね" style={{ width: '800px', padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+            </div>
           </div>
         );
       }
@@ -3796,11 +3826,11 @@
             </div>
             <button onClick={() => setShowPreview(true)} style={{ padding: '6px 12px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}><Icons.Eye /> 縦書き</button>
           </div>
-          <div style={{ flex: 1, overflow: 'auto', background: theme.bg }}>
+          <div style={{ flex: 1, overflow: 'auto', background: theme.bg, display: 'flex', justifyContent: 'center' }}>
             {item.type === 'memo' ? (
-              <OutlineEditor content={item.content || ''} onChange={updateContent} theme={theme} />
+              <OutlineEditor content={item.content || ''} onChange={updateContent} theme={theme} editorId={item.id} />
             ) : (
-              <textarea value={item.content || ''} onChange={(e) => updateContent(e.target.value)} placeholder="ここに執筆..." style={{ width: '100%', height: '100%', padding: '24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '15px', lineHeight: '2', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+              <textarea value={item.content || ''} onChange={(e) => updateContent(e.target.value)} placeholder="ここに執筆..." style={{ width: '800px', height: '100%', padding: '24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '15px', lineHeight: '2', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
             )}
           </div>
           {showPreview && (
@@ -3975,7 +4005,9 @@
                     {data.tags.filter(t => !(selectedIdea.tags || []).includes(t)).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                <textarea value={selectedIdea.content || ''} onChange={(e) => updateIdea(selectedIdea.id, 'content', e.target.value)} placeholder="ネタの詳細を入力...&#10;&#10;あらすじ、キャラ設定、シーンのイメージなど自由に書いてね" style={{ flex: 1, padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
+                  <textarea value={selectedIdea.content || ''} onChange={(e) => updateIdea(selectedIdea.id, 'content', e.target.value)} placeholder="ネタの詳細を入力...&#10;&#10;あらすじ、キャラ設定、シーンのイメージなど自由に書いてね" style={{ width: '800px', padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '14px', lineHeight: '1.8', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+                </div>
               </>
               );
             })() : (
@@ -4400,7 +4432,7 @@
       const [draggingPaneId, setDraggingPaneId] = useState(null); // ドラッグ中のペインID
       const [dragOverPaneId, setDragOverPaneId] = useState(null); // ドラッグオーバー中のペインID
       const paneScrollPositions = useRef({}); // 各ペインのスクロール位置を保存
-      const [sidebarWidth, setSidebarWidth] = useState(280);
+      const [sidebarWidth, setSidebarWidth] = useState(420);
       const [isResizing, setIsResizing] = useState(false);
       const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // サイドバー折りたたみ
       const [showFloatingTimer, setShowFloatingTimer] = useState(false); // フローティングタイマー表示
@@ -4757,8 +4789,8 @@
             return;
           }
 
-          // Ctrl+Shift+E でJSONエクスポート（全セクション共通）
-          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'E') {
+          // Ctrl+Shift+D でJSONエクスポート（全セクション共通）
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toUpperCase() === 'D') {
             e.preventDefault();
             e.stopPropagation();
             exportToJSON();
@@ -4959,7 +4991,7 @@
       useEffect(() => {
         const handleMouseMove = (e) => {
           if (isResizing) {
-            const newWidth = Math.min(Math.max(200, e.clientX - 64), 500);
+            const newWidth = Math.min(Math.max(280, e.clientX - 64), 600);
             setSidebarWidth(newWidth);
           }
         };
