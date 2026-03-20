@@ -274,9 +274,7 @@
         let content = file.content;
         if (file.truncated || !content) {
           console.log('[Gist読み込み] ファイルが大きいためraw_urlから取得します');
-          const rawResponse = await fetch(file.raw_url, {
-            headers: { 'Authorization': `token ${token}` }
-          });
+          const rawResponse = await fetch(file.raw_url);
           if (!rawResponse.ok) {
             throw new Error('Gistの生データ取得に失敗しました');
           }
