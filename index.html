@@ -270,7 +270,20 @@
         const file = gist.files['noteapp-backup.json'];
         if (!file) throw new Error('バックアップファイルが見つかりません');
         
-        return JSON.parse(file.content);
+        // 大きなファイルはGist APIがcontentを切り捨てるのでraw_urlから取得
+        let content = file.content;
+        if (file.truncated || !content) {
+          console.log('[Gist読み込み] ファイルが大きいためraw_urlから取得します');
+          const rawResponse = await fetch(file.raw_url, {
+            headers: { 'Authorization': `token ${token}` }
+          });
+          if (!rawResponse.ok) {
+            throw new Error('Gistの生データ取得に失敗しました');
+          }
+          content = await rawResponse.text();
+        }
+        
+        return JSON.parse(content);
       }
     };
 
@@ -1162,64 +1175,47 @@
 
     // ==================== アウトラインエディタ ====================
     const OutlineEditor = ({ content, onChange, theme, editorId }) => {
-      const storageKey = editorId ? `outline-collapsed-${editorId}` : null;
-      const contentStorageKey = editorId ? `outline-content-collapsed-${editorId}` : null;
+      const modeKey = editorId ? `outline-mode-${editorId}` : null;
+      const collapsedKey = editorId ? `outline-collapsed-v2-${editorId}` : null;
+      const [mode, setMode] = useState(() => {
+        if (modeKey) { try { return localStorage.getItem(modeKey) || 'text'; } catch(e) {} }
+        return 'text';
+      });
       const [collapsed, setCollapsed] = useState(() => {
-        if (storageKey) { try { return JSON.parse(localStorage.getItem(storageKey)) || {}; } catch(e) {} }
+        if (collapsedKey) { try { return JSON.parse(localStorage.getItem(collapsedKey)) || {}; } catch(e) {} }
         return {};
       });
       const [draggedId, setDraggedId] = useState(null);
       const [dragOverId, setDragOverId] = useState(null);
-      const [contentCollapsed, setContentCollapsed] = useState(() => {
-        if (contentStorageKey) { try { return JSON.parse(localStorage.getItem(contentStorageKey)) || {}; } catch(e) {} }
-        return {};
-      });
-      // 折りたたみ状態をlocalStorageに保存
-      useEffect(() => {
-        if (storageKey) localStorage.setItem(storageKey, JSON.stringify(collapsed));
-      }, [collapsed, storageKey]);
-      useEffect(() => {
-        if (contentStorageKey) localStorage.setItem(contentStorageKey, JSON.stringify(contentCollapsed));
-      }, [contentCollapsed, contentStorageKey]);
+      const dragAllowedRef = useRef(false);
       const scrollContainerRef = useRef(null);
       const scrollPositionRef = useRef(0);
 
-      // スクロール位置を保存
-      const saveScrollPosition = () => {
-        if (scrollContainerRef.current) {
-          scrollPositionRef.current = scrollContainerRef.current.scrollTop;
-        }
-      };
+      useEffect(() => {
+        if (modeKey) localStorage.setItem(modeKey, mode);
+      }, [mode, modeKey]);
+      useEffect(() => {
+        if (collapsedKey) localStorage.setItem(collapsedKey, JSON.stringify(collapsed));
+      }, [collapsed, collapsedKey]);
 
-      // スクロール位置を復元
+      const saveScrollPosition = () => {
+        if (scrollContainerRef.current) scrollPositionRef.current = scrollContainerRef.current.scrollTop;
+      };
       useEffect(() => {
         if (scrollContainerRef.current && scrollPositionRef.current > 0) {
           scrollContainerRef.current.scrollTop = scrollPositionRef.current;
         }
       });
 
-      const autoResize = (textarea) => {
-        if (textarea) {
-          textarea.style.height = 'auto';
-          textarea.style.height = Math.max(60, textarea.scrollHeight) + 'px';
-        }
-      };
-
+      // --- パース ---
       const parseOutline = (text) => {
         if (!text) return [];
         const lines = text.split('\n');
         const sections = [];
         let current = null;
         let buffer = [];
-
-        const save = () => {
-          if (current) {
-            current.content = buffer.join('\n');
-            sections.push(current);
-          }
-        };
-
-        lines.forEach((line, i) => {
+        const save = () => { if (current) { current.content = buffer.join('\n'); sections.push(current); } };
+        lines.forEach((line) => {
           const h1 = line.match(/^# (.*)$/);
           const h2 = line.match(/^## (.*)$/);
           const h3 = line.match(/^### (.*)$/);
@@ -1232,7 +1228,6 @@
           }
         });
         save();
-
         if (sections.length === 0 && text.trim()) {
           sections.push({ id: 'section-0', level: 0, title: '', content: text });
         }
@@ -1252,32 +1247,27 @@
 
       const updateSection = (sectionId, field, value) => {
         saveScrollPosition();
-        const newSections = sections.map(s => s.id === sectionId ? { ...s, [field]: value } : s);
-        rebuildContent(newSections);
+        rebuildContent(sections.map(s => s.id === sectionId ? { ...s, [field]: value } : s));
+      };
+
+      const addSection = (level) => {
+        rebuildContent([...sections, { id: `section-new-${Date.now()}`, level, title: '新しいセクション', content: '' }]);
       };
 
       const addSectionAfter = (afterId, level) => {
         const idx = sections.findIndex(s => s.id === afterId);
-        const newSection = { id: `section-new-${Date.now()}`, level, title: '新しいセクション', content: '' };
-        const newSections = [...sections];
-        newSections.splice(idx + 1, 0, newSection);
-        rebuildContent(newSections);
+        const ns = [...sections];
+        ns.splice(idx + 1, 0, { id: `section-new-${Date.now()}`, level, title: '新しいセクション', content: '' });
+        rebuildContent(ns);
       };
 
       const addChildSection = (parentId) => {
         const idx = sections.findIndex(s => s.id === parentId);
-        const parentLevel = sections[idx].level;
-        // 最大3階層まで
-        if (parentLevel >= 3) return;
-        const newSection = { id: `section-new-${Date.now()}`, level: parentLevel + 1, title: '新しいセクション', content: '' };
-        const newSections = [...sections];
-        newSections.splice(idx + 1, 0, newSection);
-        rebuildContent(newSections);
-      };
-
-      const addSection = (level) => {
-        const newSection = { id: `section-new-${Date.now()}`, level, title: '新しいセクション', content: '' };
-        rebuildContent([...sections, newSection]);
+        const pl = sections[idx].level;
+        if (pl >= 3) return;
+        const ns = [...sections];
+        ns.splice(idx + 1, 0, { id: `section-new-${Date.now()}`, level: pl + 1, title: '新しいセクション', content: '' });
+        rebuildContent(ns);
       };
 
       const deleteSection = (sectionId) => {
@@ -1286,159 +1276,231 @@
         }
       };
 
-      const dragAllowedRef = useRef(false);
+      // --- ドラッグ ---
       const handleDragStart = (e, id) => {
-        // グリップアイコンからのドラッグのみ許可
-        if (!dragAllowedRef.current) {
-          e.preventDefault();
-          return;
-        }
-        setDraggedId(id); 
+        if (!dragAllowedRef.current) { e.preventDefault(); return; }
+        setDraggedId(id);
         e.dataTransfer.effectAllowed = 'move';
-        // ドラッグ開始時のスクロール位置を保存
         saveScrollPosition();
       };
-      const handleDragOver = (e, id) => { 
-        e.preventDefault();
-        e.stopPropagation();
+      const handleDragOver = (e, id) => {
+        e.preventDefault(); e.stopPropagation();
         if (id !== draggedId) setDragOverId(id);
-        // ドラッグ中はスクロール位置を固定
         if (scrollContainerRef.current && scrollPositionRef.current !== null) {
           scrollContainerRef.current.scrollTop = scrollPositionRef.current;
         }
       };
-      const handleDragLeave = () => { setDragOverId(null); };
+      const handleDragLeave = () => setDragOverId(null);
       const handleDrop = (e, targetId) => {
         e.preventDefault();
         if (draggedId && targetId && draggedId !== targetId) {
-          const draggedIdx = sections.findIndex(s => s.id === draggedId);
-          const targetIdx = sections.findIndex(s => s.id === targetId);
-          if (draggedIdx !== -1 && targetIdx !== -1) {
-            const newSections = [...sections];
-            const [dragged] = newSections.splice(draggedIdx, 1);
-            newSections.splice(targetIdx, 0, dragged);
-            rebuildContent(newSections);
+          const di = sections.findIndex(s => s.id === draggedId);
+          const ti = sections.findIndex(s => s.id === targetId);
+          if (di !== -1 && ti !== -1) {
+            const ns = [...sections];
+            const [dragged] = ns.splice(di, 1);
+            ns.splice(ti, 0, dragged);
+            rebuildContent(ns);
           }
         }
-        setDraggedId(null);
-        setDragOverId(null);
+        setDraggedId(null); setDragOverId(null);
       };
-      const handleDragEnd = () => { 
-        setDraggedId(null); 
-        setDragOverId(null); 
-        dragAllowedRef.current = false;
-        scrollPositionRef.current = 0; // リセット
-      };
+      const handleDragEnd = () => { setDraggedId(null); setDragOverId(null); dragAllowedRef.current = false; scrollPositionRef.current = 0; };
 
-      const hasChildren = (idx) => idx + 1 < sections.length && sections[idx + 1].level > sections[idx].level;
+      // --- 折りたたみ ---
+      const toggleCollapse = (id) => setCollapsed(prev => ({ ...prev, [id]: !prev[id] }));
       const isHidden = (idx) => {
         const s = sections[idx];
         for (let i = idx - 1; i >= 0; i--) {
           const prev = sections[i];
-          if (prev.level < s.level && prev.level > 0 && collapsed[prev.id]) return true;
+          if (prev.level > 0 && prev.level < s.level && collapsed[prev.id]) return true;
           if (prev.level > 0 && prev.level < s.level) break;
         }
         return false;
       };
-      const toggleCollapse = (id) => { setCollapsed(prev => ({ ...prev, [id]: !prev[id] })); };
 
-      if (sections.length === 0 || (sections.length === 1 && sections[0].level === 0 && !sections[0].content?.trim())) {
+      // --- コピー ---
+      const copyAll = () => {
+        const plainText = sections.map(s => {
+          if (s.level === 0) return s.content;
+          const prefix = s.level === 1 ? '■ ' : s.level === 2 ? '　● ' : '　　・ ';
+          return prefix + s.title + (s.content.trim() ? '\n' + s.content : '');
+        }).join('\n\n');
+        navigator.clipboard.writeText(plainText);
+        alert('プロット全体をコピーしました！');
+      };
+
+      const toggleAllCollapse = () => {
+        const allIds = sections.filter(s => s.level > 0).map(s => s.id);
+        const allCollapsed = allIds.every(id => collapsed[id]);
+        const nc = {};
+        allIds.forEach(id => { nc[id] = !allCollapsed; });
+        setCollapsed(nc);
+      };
+
+      const autoResize = (textarea) => {
+        if (textarea) { textarea.style.height = 'auto'; textarea.style.height = Math.max(40, textarea.scrollHeight) + 'px'; }
+      };
+
+      const hasSections = sections.length > 0 && !(sections.length === 1 && sections[0].level === 0);
+
+      // --- ツールバー ---
+      const Toolbar = () => (
+        <div style={{ padding: '6px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '6px', alignItems: 'center', background: theme.bgSecondary, flexShrink: 0, flexWrap: 'wrap' }}>
+          {/* モード切替 */}
+          <div style={{ display: 'flex', background: theme.bgTertiary, borderRadius: '6px', padding: '2px', gap: '2px' }}>
+            <button onClick={() => setMode('text')} style={{ padding: '4px 10px', fontSize: '11px', background: mode === 'text' ? theme.accent : 'transparent', color: mode === 'text' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: mode === 'text' ? '600' : '400' }}>📝 テキスト</button>
+            <button onClick={() => setMode('outline')} style={{ padding: '4px 10px', fontSize: '11px', background: mode === 'outline' ? theme.accent : 'transparent', color: mode === 'outline' ? '#fff' : theme.textSecondary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: mode === 'outline' ? '600' : '400' }}>📑 折りたたみ</button>
+          </div>
+          <div style={{ width: '1px', height: '20px', background: theme.border }} />
+          {mode === 'outline' && hasSections && (
+            <>
+              <button onClick={() => addSection(1)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ 大項目</button>
+              <button onClick={() => addSection(2)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ 中項目</button>
+              <button onClick={() => addSection(3)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ 小項目</button>
+              <div style={{ width: '1px', height: '20px', background: theme.border }} />
+            </>
+          )}
+          <div style={{ flex: 1 }} />
+          {hasSections && (
+            <button onClick={copyAll} style={{ padding: '4px 10px', fontSize: '11px', background: theme.success, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📋 全体コピー</button>
+          )}
+          {mode === 'outline' && hasSections && (
+            <>
+              <button onClick={toggleAllCollapse} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>
+                {Object.values(collapsed).filter(Boolean).length > 0 ? '📂 全開く' : '📁 全閉じる'}
+              </button>
+            </>
+          )}
+          <span style={{ fontSize: '10px', color: theme.textSecondary }}>
+            {mode === 'text' ? '💡 # ## ### で見出し' : '⬍ ドラッグで並び替え'}
+          </span>
+        </div>
+      );
+
+      // ==================== テキストモード ====================
+      if (mode === 'text') {
         return (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', background: theme.bgSecondary }}>
-              <span style={{ fontSize: '11px', color: theme.textSecondary }}>💡 # 大項目 / ## 中項目 / ### 小項目 で階層化</span>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => addSection(1)} style={{ padding: '4px 8px', fontSize: '11px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ 大項目</button>
-              <button onClick={() => addSection(2)} style={{ padding: '4px 8px', fontSize: '11px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ 中項目</button>
+            <Toolbar />
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', background: theme.bg }}>
+              <textarea
+                value={content || ''}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={'ここにプロットを書く...\n\n# 第1話\n## シーン1\nここに内容\n\n### 詳細\n細かいメモなど'}
+                style={{ width: '100%', maxWidth: '900px', height: '100%', padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '15px', lineHeight: '2', color: theme.text, fontFamily: '"Noto Serif JP", serif' }}
+              />
             </div>
-            <textarea value={content || ''} onChange={(e) => onChange(e.target.value)} placeholder="ここにプロットを書く..." style={{ flex: 1, padding: '20px 24px', background: theme.bg, border: 'none', outline: 'none', resize: 'none', fontSize: '15px', lineHeight: '2', color: theme.text, fontFamily: '"Noto Serif JP", serif' }} />
+          </div>
+        );
+      }
+
+      // ==================== 折りたたみモード ====================
+      // 見出しがない場合はテキストモードと同じ
+      if (!hasSections) {
+        return (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Toolbar />
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', background: theme.bg }}>
+              <textarea
+                value={content || ''}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={'# 大項目 / ## 中項目 / ### 小項目 で見出しを作ってね'}
+                style={{ width: '100%', maxWidth: '900px', height: '100%', padding: '20px 24px', background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontSize: '15px', lineHeight: '2', color: theme.text, fontFamily: '"Noto Serif JP", serif' }}
+              />
+            </div>
           </div>
         );
       }
 
       return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', gap: '8px', alignItems: 'center', background: theme.bgSecondary, flexShrink: 0, flexWrap: 'wrap' }}>
-            <button onClick={() => addSection(1)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.accent, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ 大項目</button>
-            <button onClick={() => addSection(2)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ 中項目</button>
-            <button onClick={() => addSection(3)} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }}>+ 小項目</button>
-            <div style={{ flex: 1 }} />
-            <button onClick={() => {
-              // プロット全体をプレーンテキストでコピー
-              const plainText = sections.map(s => {
-                if (s.level === 0) return s.content;
-                const prefix = s.level === 1 ? '■ ' : s.level === 2 ? '　● ' : '　　・ ';
-                return prefix + s.title + (s.content.trim() ? '\n' + s.content : '');
-              }).join('\n\n');
-              navigator.clipboard.writeText(plainText);
-              alert('プロット全体をコピーしました！');
-            }} style={{ padding: '4px 10px', fontSize: '11px', background: theme.success, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-              📋 全体コピー
-            </button>
-            <span style={{ fontSize: '10px', color: theme.textSecondary }}>⬍ ドラッグで並び替え</span>
-            <button onClick={() => {
-              const allIds = sections.filter(s => s.level > 0).map(s => s.id);
-              const allCollapsed = allIds.every(id => collapsed[id]);
-              const newCollapsed = {};
-              allIds.forEach(id => { newCollapsed[id] = !allCollapsed; });
-              setCollapsed(newCollapsed);
-            }} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }} title="子項目も含めて全部折りたたみ">
-              {Object.values(collapsed).filter(Boolean).length > 0 ? '📂 全開く' : '📁 全閉じる'}
-            </button>
-            <button onClick={() => {
-              const allIds = sections.filter(s => s.level > 0).map(s => s.id);
-              const allContentCollapsed = allIds.every(id => contentCollapsed[id]);
-              const newContentCollapsed = {};
-              allIds.forEach(id => { newContentCollapsed[id] = !allContentCollapsed; });
-              setContentCollapsed(newContentCollapsed);
-            }} style={{ padding: '4px 10px', fontSize: '11px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '4px', cursor: 'pointer' }} title="内容だけ折りたたみ（子項目は残る）">
-              {Object.values(contentCollapsed).filter(Boolean).length > 0 ? '📝 内容開く' : '📄 内容閉じる'}
-            </button>
-          </div>
+          <Toolbar />
+          <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', background: theme.bg }}>
+            <div style={{ maxWidth: '900px', margin: '0 auto', padding: '8px 16px' }}>
+              {sections.map((s, idx) => {
+                if (isHidden(idx)) return null;
+                const indent = s.level > 0 ? (s.level - 1) * 20 : 0;
+                const isCollapsedItem = collapsed[s.id];
+                const isDragging = draggedId === s.id;
+                const isDragOver = dragOverId === s.id;
+                const levelColors = { 1: theme.accent, 2: theme.accentLight || theme.accent, 3: theme.textSecondary };
 
-          <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '12px', background: theme.bg }}>
-            {sections.map((s, idx) => {
-              if (isHidden(idx)) return null;
-              const indent = s.level > 0 ? (s.level - 1) * 24 : 0;
-              const isCollapsedItem = collapsed[s.id];
-              const isDragging = draggedId === s.id;
-              const isDragOver = dragOverId === s.id;
+                if (s.level === 0) {
+                  return (
+                    <div key={s.id} style={{ marginBottom: '4px' }}>
+                      <textarea value={s.content} onChange={(e) => { updateSection(s.id, 'content', e.target.value); autoResize(e.target); }} ref={(el) => el && autoResize(el)} style={{ width: '100%', minHeight: '40px', padding: '8px 12px', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: '14px', lineHeight: '1.8', resize: 'none', overflow: 'hidden', fontFamily: '"Noto Serif JP", serif' }} />
+                    </div>
+                  );
+                }
 
-              if (s.level === 0) {
                 return (
-                  <div key={s.id} style={{ marginBottom: '8px' }}>
-                    <textarea value={s.content} onChange={(e) => { updateSection(s.id, 'content', e.target.value); autoResize(e.target); }} ref={(el) => el && autoResize(el)} style={{ width: '100%', minHeight: '60px', padding: '12px', background: theme.bgSecondary, border: `1px solid ${theme.border}`, borderRadius: '8px', color: theme.text, fontSize: '14px', lineHeight: '1.8', resize: 'none', outline: 'none', fontFamily: '"Noto Serif JP", serif', overflow: 'hidden' }} />
-                  </div>
-                );
-              }
-
-              return (
-                <div key={s.id} draggable onDragStart={(e) => handleDragStart(e, s.id)} onDragOver={(e) => handleDragOver(e, s.id)} onDragLeave={handleDragLeave} onDrop={(e) => handleDrop(e, s.id)} onDragEnd={handleDragEnd} style={{ marginLeft: indent, marginBottom: '6px', opacity: isDragging ? 0.5 : 1, transform: isDragOver ? 'translateY(4px)' : 'none', transition: 'transform 0.15s, opacity 0.15s' }}>
-                  {isDragOver && <div style={{ height: '3px', background: theme.accent, borderRadius: '2px', marginBottom: '4px' }} />}
-                  <div style={{ background: theme.bgSecondary, borderRadius: '8px', border: `1px solid ${isDragOver ? theme.accent : theme.border}`, borderLeft: s.level === 1 ? `4px solid ${theme.accent}` : s.level === 2 ? `4px solid ${theme.accentLight}` : `4px solid ${theme.border}`, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: isCollapsedItem ? theme.bgTertiary : 'transparent', borderBottom: (isCollapsedItem || contentCollapsed[s.id]) ? 'none' : `1px solid ${theme.border}` }}>
-                      <span data-drag-handle="true" onMouseDown={() => { dragAllowedRef.current = true; }} onMouseUp={() => { dragAllowedRef.current = false; }} style={{ cursor: 'grab', color: theme.textSecondary, display: 'flex', padding: '2px' }} title="ドラッグで移動"><Icons.GripVertical /></span>
-                      <span onClick={() => toggleCollapse(s.id)} style={{ color: theme.textSecondary, display: 'flex', transform: isCollapsedItem ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.2s', cursor: 'pointer', padding: '2px' }} title="子項目も含めて折りたたみ"><Icons.ChevronRight /></span>
-                      <input type="text" value={s.title} onChange={(e) => updateSection(s.id, 'title', e.target.value)} placeholder="タイトルを入力..." style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: s.level === 1 ? '15px' : '14px', fontWeight: s.level === 1 ? '600' : '500', color: s.level === 1 ? theme.accent : theme.text, padding: '4px' }} />
-                      {(isCollapsedItem || contentCollapsed[s.id]) && s.content.trim() && <span style={{ fontSize: '11px', color: theme.textSecondary, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.content.trim().substring(0, 25)}...</span>}
-                      <div style={{ display: 'flex', gap: '2px' }}>
-                        <button onClick={() => setContentCollapsed(prev => ({ ...prev, [s.id]: !prev[s.id] }))} style={{ padding: '2px 6px', fontSize: '10px', background: contentCollapsed[s.id] ? theme.accent : theme.bgTertiary, color: contentCollapsed[s.id] ? '#fff' : theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }} title="内容だけ折りたたみ">
-                          {contentCollapsed[s.id] ? '📝' : '📄'}
-                        </button>
-                        <button onClick={() => addSectionAfter(s.id, s.level)} style={{ padding: '2px 6px', fontSize: '10px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }} title="下に同レベルを追加">+</button>
+                  <div key={s.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, s.id)}
+                    onDragOver={(e) => handleDragOver(e, s.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, s.id)}
+                    onDragEnd={handleDragEnd}
+                    style={{ marginLeft: indent, opacity: isDragging ? 0.4 : 1, transition: 'opacity 0.15s' }}
+                  >
+                    {isDragOver && <div style={{ height: '2px', background: theme.accent, borderRadius: '1px', margin: '2px 0' }} />}
+                    {/* 見出し行 */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 4px',
+                      borderBottom: `1px solid ${isCollapsedItem ? 'transparent' : theme.border}`,
+                      cursor: 'pointer', userSelect: 'none',
+                    }}>
+                      <span
+                        data-drag-handle="true"
+                        onMouseDown={() => { dragAllowedRef.current = true; }}
+                        onMouseUp={() => { dragAllowedRef.current = false; }}
+                        style={{ cursor: 'grab', color: theme.textSecondary, display: 'flex', padding: '2px', opacity: 0.4, flexShrink: 0 }}
+                        title="ドラッグで移動"
+                      ><Icons.GripVertical /></span>
+                      <span
+                        onClick={() => toggleCollapse(s.id)}
+                        style={{ color: levelColors[s.level] || theme.textSecondary, display: 'flex', transform: isCollapsedItem ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.2s', padding: '2px', flexShrink: 0 }}
+                      ><Icons.ChevronRight /></span>
+                      <span
+                        onClick={() => toggleCollapse(s.id)}
+                        style={{
+                          flex: 1,
+                          fontSize: s.level === 1 ? '15px' : s.level === 2 ? '14px' : '13px',
+                          fontWeight: s.level === 1 ? '600' : '500',
+                          color: s.level === 1 ? theme.accent : theme.text,
+                          padding: '2px 0',
+                        }}
+                      >{s.title || '(無題)'}</span>
+                      {isCollapsedItem && s.content.trim() && (
+                        <span style={{ fontSize: '11px', color: theme.textSecondary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {s.content.trim().substring(0, 30)}...
+                        </span>
+                      )}
+                      <div style={{ display: 'flex', gap: '2px', flexShrink: 0, opacity: 0.6 }} onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => addSectionAfter(s.id, s.level)} style={{ padding: '2px 5px', fontSize: '10px', background: 'transparent', color: theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }} title="下に同レベルを追加">+</button>
                         {s.level < 3 && (
-                          <button onClick={() => addChildSection(s.id)} style={{ padding: '2px 6px', fontSize: '10px', background: theme.bgTertiary, color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: '3px', cursor: 'pointer' }} title="下の階層に追加">↳</button>
+                          <button onClick={() => addChildSection(s.id)} style={{ padding: '2px 5px', fontSize: '10px', background: 'transparent', color: theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }} title="子階層を追加">↳</button>
                         )}
-                        <button onClick={() => deleteSection(s.id)} style={{ padding: '2px 6px', fontSize: '10px', background: 'transparent', color: theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer', opacity: 0.6 }} title="削除"><Icons.Trash /></button>
+                        <button onClick={() => deleteSection(s.id)} style={{ padding: '2px 5px', fontSize: '10px', background: 'transparent', color: theme.textSecondary, border: 'none', borderRadius: '3px', cursor: 'pointer' }} title="削除"><Icons.Trash /></button>
                       </div>
                     </div>
-                    {!isCollapsedItem && !contentCollapsed[s.id] && (
-                      <textarea value={s.content} onChange={(e) => { updateSection(s.id, 'content', e.target.value); autoResize(e.target); }} ref={(el) => el && autoResize(el)} placeholder="内容を入力..." style={{ width: '100%', minHeight: '60px', padding: '12px', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: '14px', lineHeight: '1.8', resize: 'none', overflow: 'hidden', fontFamily: '"Noto Serif JP", serif' }} />
+                    {/* 内容（折りたたみ時は非表示） */}
+                    {!isCollapsedItem && (
+                      <div style={{ paddingLeft: '28px' }}>
+                        <textarea
+                          value={s.content}
+                          onChange={(e) => { updateSection(s.id, 'content', e.target.value); autoResize(e.target); }}
+                          ref={(el) => el && autoResize(el)}
+                          placeholder="内容を入力..."
+                          style={{ width: '100%', minHeight: '32px', padding: '4px 0 8px 0', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: '14px', lineHeight: '1.8', resize: 'none', overflow: 'hidden', fontFamily: '"Noto Serif JP", serif' }}
+                        />
+                      </div>
                     )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       );
