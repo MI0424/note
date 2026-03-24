@@ -1447,7 +1447,6 @@
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 4px',
                       borderBottom: `1px solid ${isCollapsedItem ? 'transparent' : theme.border}`,
-                      cursor: 'pointer', userSelect: 'none',
                     }}>
                       <span
                         data-drag-handle="true"
@@ -1458,18 +1457,22 @@
                       ><Icons.GripVertical /></span>
                       <span
                         onClick={() => toggleCollapse(s.id)}
-                        style={{ color: levelColors[s.level] || theme.textSecondary, display: 'flex', transform: isCollapsedItem ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.2s', padding: '2px', flexShrink: 0 }}
+                        style={{ color: levelColors[s.level] || theme.textSecondary, display: 'flex', transform: isCollapsedItem ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.2s', padding: '2px', flexShrink: 0, cursor: 'pointer' }}
                       ><Icons.ChevronRight /></span>
-                      <span
-                        onClick={() => toggleCollapse(s.id)}
+                      <input
+                        type="text"
+                        value={s.title}
+                        onChange={(e) => updateSection(s.id, 'title', e.target.value)}
+                        placeholder="タイトルを入力..."
                         style={{
                           flex: 1,
                           fontSize: s.level === 1 ? '15px' : s.level === 2 ? '14px' : '13px',
                           fontWeight: s.level === 1 ? '600' : '500',
                           color: s.level === 1 ? theme.accent : theme.text,
-                          padding: '2px 0',
+                          padding: '4px',
+                          background: 'transparent', border: 'none', outline: 'none',
                         }}
-                      >{s.title || '(無題)'}</span>
+                      />
                       {isCollapsedItem && s.content.trim() && (
                         <span style={{ fontSize: '11px', color: theme.textSecondary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {s.content.trim().substring(0, 30)}...
